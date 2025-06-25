@@ -1,0 +1,225 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Hotel Management System Guidelines
+
+## Project Overview
+Comprehensive hotel management system for Indian hotels with 18 rooms, featuring check-in/check-out, GST billing, customer management, and admin controls.
+
+## Tech Stack
+- **Framework**: Next.js 15 + App Router + TypeScript
+- **UI**: Shadcn/ui + Tailwind CSS 4  
+- **Backend**: Supabase (Database, Auth, Storage, Real-time)
+- **Email**: Gmail SMTP
+- **Target**: Indian hotel operations
+
+## Core Business Logic
+
+### Room Management (18 Rooms)
+- **Types**: AC/Non-AC, 2-bed/3-bed/VIP configurations
+- **Dynamic Pricing**: Default rates with admin override
+- **Real-time Status**: Available, Occupied, Cleaning, Maintenance, Blocked
+
+### Indian GST Compliance (12% Hotel Tax)
+- **Billing Options**: Inclusive GST (tax included) vs Exclusive GST (tax added)
+- **Invoice Generation**: GST-compliant with proper tax breakdowns
+- **Calculation Pattern**:
+```typescript
+const calculateGST = (baseAmount: number, isInclusive: boolean) => {
+  const GST_RATE = 0.12;
+  if (isInclusive) {
+    const gstAmount = (baseAmount * GST_RATE) / (1 + GST_RATE);
+    return { baseAmount: baseAmount - gstAmount, gstAmount, totalAmount: baseAmount };
+  } else {
+    const gstAmount = baseAmount * GST_RATE;
+    return { baseAmount, gstAmount, totalAmount: baseAmount + gstAmount };
+  }
+};
+```
+
+### Customer Management (Indian Context)
+- **ID Types**: Aadhaar, PAN, Passport, Driving License, Voter ID
+- **Data Collection**: Primary guest + additional members, ID photos
+- **Address Format**: Complete Indian address (State, District, PIN)
+- **Contact**: Mobile number with +91 validation
+
+## Modern UI/UX Design
+
+### Design System
+- **Modern Aesthetics**: Clean minimalism, 8px grid, rounded corners (12px), subtle shadows
+- **Professional Language**: Hotel industry terms with helpful tooltips
+- **Responsive**: Mobile-first (320px+), tablet (768px+), desktop (1024px+)
+- **Touch Optimized**: 60px minimum touch targets, swipe gestures
+
+### Component Patterns
+```typescript
+// Modern button system with proper spacing
+.button-primary {
+  min-height: 60px;
+  padding: 16px 24px;
+  font-size: 18px;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: all 0.2s ease-in-out;
+}
+
+// Modern room status design
+const RoomStatusDesign = {
+  available: { bg: 'bg-emerald-50', border: 'border-emerald-200', icon: '✅' },
+  occupied: { bg: 'bg-red-50', border: 'border-red-200', icon: '🏠' },
+  cleaning: { bg: 'bg-amber-50', border: 'border-amber-200', icon: '🧹' },
+  maintenance: { bg: 'bg-orange-50', border: 'border-orange-200', icon: '🔧' }
+};
+```
+
+### Hotel Industry Language
+```typescript
+const HotelTerminology = {
+  // Standard terms with explanations
+  "Tariff": "Room Rate",
+  "Guest Bill": "Complete Bill Summary", 
+  "Occupancy": "Room Status",
+  "Amenities": "Room Features",
+  
+  // Professional processes
+  processes: ["Room Selection", "Guest Registration", "Payment Processing", "Check-in Complete"]
+};
+```
+
+## Next.js Rendering Strategy
+
+### SSR (Real-time data)
+- Dashboard, Room availability, Customer search, Reports, Admin settings
+```typescript
+export async function getServerSideProps() {
+  const { data } = await supabase.from('rooms').select('*').eq('status', 'available');
+  return { props: { rooms: data || [] } };
+}
+```
+
+### SSG (Static content)
+- Login, Hotel info, Terms, Help pages
+```typescript
+export async function getStaticProps() {
+  return { props: { data }, revalidate: 86400 };
+}
+```
+
+### CSR (Interactive components)
+- Booking forms, Photo upload, Payment processing, Notifications
+```typescript
+const { data, mutate } = useSWR('/api/rooms', fetcher);
+```
+
+### ISR (Periodic updates)
+- Room pricing, Policies (revalidate: 3600)
+
+## Mobile-First Responsive Design
+
+### Breakpoint Strategy
+```css
+/* Mobile (320-640px): Single column, bottom nav, full-width buttons */
+/* Tablet (641-1024px): 2-3 columns, side panels, 60px buttons */  
+/* Desktop (1025px+): 4-6 columns, full sidebar, auto-width buttons */
+
+@media (max-width: 640px) {
+  .grid-responsive { grid-template-columns: 1fr; }
+  .button-primary { width: 100%; min-height: 56px; }
+}
+```
+
+### Performance Targets
+- **Mobile 3G**: < 5s first load, < 2s subsequent
+- **Tablet WiFi**: < 2s first load, < 0.5s subsequent
+- **Desktop**: < 1.5s first load, < 0.3s subsequent
+
+## Production-Ready Code Standards
+
+### Security & Validation
+```typescript
+// Always validate inputs with Zod
+const GuestSchema = z.object({
+  name: z.string().min(2).max(100).regex(/^[a-zA-Z\s]+$/),
+  email: z.string().email(),
+  phone: z.string().regex(/^\+91[0-9]{10}$/),
+  idType: z.enum(['aadhaar', 'pan', 'passport', 'driving_license'])
+});
+
+// Secure API pattern
+export async function POST(request: NextRequest) {
+  try {
+    await rateLimit(request);
+    const user = await authenticateRequest(request);
+    if (!hasPermission(user, 'CREATE_BOOKING')) throw new Error('Forbidden');
+    const data = GuestSchema.parse(await request.json());
+    return NextResponse.json(await createBooking(data));
+  } catch (error) {
+    logger.error('API error', { error });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+```
+
+### Error Handling & Performance
+```typescript
+// Production-ready service pattern
+class RoomService {
+  async getRoomAvailability(checkIn: Date, checkOut: Date): Promise<Room[]> {
+    const cacheKey = `rooms:${checkIn.toISOString()}:${checkOut.toISOString()}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+    
+    const { data, error } = await supabase.from('rooms')
+      .select('*, bookings!left(*)')
+      .not('bookings.id', 'is', null);
+    
+    if (error) throw new DatabaseError('Failed to fetch availability', error);
+    await redis.setex(cacheKey, 300, JSON.stringify(data));
+    return data;
+  }
+}
+```
+
+## Critical Requirements
+
+### ALWAYS Generate:
+- ✅ Complete error handling (try-catch blocks)
+- ✅ Input validation (Zod schemas) 
+- ✅ TypeScript types (no `any`)
+- ✅ Authentication/authorization
+- ✅ Structured logging
+- ✅ Performance optimization (caching, queries)
+- ✅ Unit tests for business logic
+- ✅ JSDoc documentation
+
+### NEVER Generate:
+- ❌ Unvalidated user inputs
+- ❌ Hard-coded secrets
+- ❌ Code without error handling
+- ❌ APIs without auth
+- ❌ Inefficient database queries
+
+### Testing Requirements
+- **80%+ Coverage**: Business logic functions
+- **Integration Tests**: API endpoints, database operations  
+- **E2E Tests**: Booking, check-in, billing flows
+- **Load Testing**: Peak usage scenarios
+
+## Implementation Notes
+
+### Hotel Workflow
+1. **Room Selection** → **Guest Registration** → **Payment Processing** → **Check-in Complete**
+2. **Booking Process**: Visual room grid → Guest details + ID photos → Payment with GST → Receipt generation
+3. **Staff Interface**: Bottom tab nav (mobile), sidebar (desktop), quick actions, emergency buttons
+
+### Key Features
+- **Real-time Room Status**: Live updates with color-coded cards
+- **GST Billing**: Automatic tax calculations with inclusive/exclusive options
+- **ID Verification**: Photo capture with Supabase storage
+- **Multi-device**: Responsive design for phones, tablets, desktops
+- **Offline Support**: Basic functionality without internet
+- **Print Integration**: Receipt printing for tablets/desktops
+
+Remember: Generate professional, production-ready code that hotel staff can use confidently. Combine modern aesthetics with industry-standard terminology and accessibility. Every component should be secure, performant, and well-tested.
