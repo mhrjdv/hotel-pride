@@ -1,12 +1,11 @@
 import { createServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { DashboardClient } from './DashboardClient';
-import { startOfToday, endOfToday, formatISO } from 'date-fns';
 
 async function getStats(supabase: any) {
   const today = new Date();
-  const startOfTodayISO = formatISO(startOfToday(today));
-  const endOfTodayISO = formatISO(endOfToday(today));
+  const startOfTodayISO = new Date(today.setHours(0, 0, 0, 0)).toISOString();
+  const endOfTodayISO = new Date(today.setHours(23, 59, 59, 999)).toISOString();
 
   // Simplified and combined queries for efficiency
   const { count: occupiedRooms, error: occupiedError } = await supabase
@@ -43,9 +42,15 @@ async function getStats(supabase: any) {
     .in('payment_status', ['pending', 'partial'])
     .neq('status', 'cancelled');
 
-  // Log errors if any for debugging
-  if (occupiedError || checkInsError || checkOutsError || revenueError || pendingPaymentsError) {
-    console.error({ occupiedError, checkInsError, checkOutsError, revenueError, pendingPaymentsError });
+  const errors: Record<string, any> = {};
+  if (occupiedError) errors.occupiedError = occupiedError;
+  if (checkInsError) errors.checkInsError = checkInsError;
+  if (checkOutsError) errors.checkOutsError = checkOutsError;
+  if (revenueError) errors.revenueError = revenueError;
+  if (pendingPaymentsError) errors.pendingPaymentsError = pendingPaymentsError;
+
+  if (Object.keys(errors).length > 0) {
+    console.error("Dashboard Stats Errors:", errors);
   }
 
   return {

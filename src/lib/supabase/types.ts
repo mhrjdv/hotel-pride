@@ -159,7 +159,7 @@ export interface Database {
           alternate_phone: string | null
           id_type: 'aadhaar' | 'pan' | 'passport' | 'driving_license' | 'voter_id'
           id_number: string
-          id_photo_url: string | null
+          id_photo_urls: string[] | null
           address_line1: string | null
           address_line2: string | null
           city: string | null
@@ -186,7 +186,7 @@ export interface Database {
           phone: string
           id_type: 'aadhaar' | 'pan' | 'passport' | 'driving_license' | 'voter_id'
           id_number: string
-          id_photo_url?: string | null
+          id_photo_urls?: string[] | null
           address_line1?: string | null
           address_line2?: string | null
           city?: string | null
@@ -203,7 +203,7 @@ export interface Database {
           phone?: string
           id_type?: 'aadhaar' | 'pan' | 'passport' | 'driving_license' | 'voter_id'
           id_number?: string
-          id_photo_url?: string | null
+          id_photo_urls?: string[] | null
           address_line1?: string | null
           address_line2?: string | null
           city?: string | null
