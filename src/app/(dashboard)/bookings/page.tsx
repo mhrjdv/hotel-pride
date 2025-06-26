@@ -31,6 +31,7 @@ import {
 import { Database } from '@/lib/supabase/types';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 type Booking = Database['public']['Tables']['bookings']['Row'] & {
   rooms: Pick<Database['public']['Tables']['rooms']['Row'], 'room_number' | 'room_type'> | null;
@@ -39,6 +40,7 @@ type Booking = Database['public']['Tables']['bookings']['Row'] & {
 
 export default function BookingsPage() {
   const supabase = createClient();
+  const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +49,7 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchBookings();
@@ -133,6 +136,7 @@ export default function BookingsPage() {
 
   const handleBookingComplete = (booking: any) => {
     setShowWizard(false);
+    setEditingBookingId(null);
     fetchBookings();
     toast.success(`Booking ${booking.booking_number} created successfully!`);
   };
@@ -186,6 +190,20 @@ export default function BookingsPage() {
 
   const stats = getQuickStats();
 
+  const openNewBookingWizard = () => {
+    setEditingBookingId(null);
+    setShowWizard(true);
+  };
+
+  const handleEdit = (bookingId: string) => {
+    setEditingBookingId(bookingId);
+    setShowWizard(true);
+  };
+
+  const handleView = (bookingId: string) => {
+    router.push(`/bookings/${bookingId}`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -194,7 +212,7 @@ export default function BookingsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
           <p className="text-gray-600 mt-1">Manage reservations, check-ins, and payments</p>
         </div>
-        <Button onClick={() => setShowWizard(true)}>
+        <Button onClick={openNewBookingWizard}>
           <Plus className="w-4 h-4 mr-2" />
           New Booking
         </Button>
@@ -370,8 +388,11 @@ export default function BookingsPage() {
                               Check Out
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost">
+                          <Button size="sm" variant="ghost" onClick={() => handleView(booking.id)}>
                             <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleEdit(booking.id)}>
+                            <Edit className="w-4 h-4" />
                           </Button>
                         </div>
                       </CardContent>
@@ -470,8 +491,11 @@ export default function BookingsPage() {
                                     Check Out
                                   </Button>
                                 )}
-                                <Button size="sm" variant="ghost">
+                                <Button size="sm" variant="ghost" onClick={() => handleView(booking.id)}>
                                   <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => handleEdit(booking.id)}>
+                                  <Edit className="w-4 h-4" />
                                 </Button>
                                 <Button size="sm" variant="ghost">
                                   <MoreHorizontal className="w-4 h-4" />
@@ -493,9 +517,10 @@ export default function BookingsPage() {
       {/* Booking Wizard Dialog */}
       <BookingWizard
         isOpen={showWizard}
+        bookingId={editingBookingId || undefined}
         onOpenChange={setShowWizard}
         onComplete={handleBookingComplete}
-        onCancel={() => setShowWizard(false)}
+        onCancel={() => { setShowWizard(false); setEditingBookingId(null); }}
       />
     </div>
   );

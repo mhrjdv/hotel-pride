@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Upload, X } from 'lucide-react';
-import { addCustomer, updateCustomer, getSignedUrls } from '@/app/(dashboard)/customers/actions';
+import { getSignedUrls } from '@/app/(dashboard)/customers/actions';
 import { Database } from '@/lib/supabase/types';
 
 const idTypes = [
@@ -53,7 +53,6 @@ const customerSchema = z.object({
   email: z.string().email('Invalid email address.').optional().or(z.literal('')),
   id_type: z.enum(idTypes),
   id_number: z.string().min(5, 'ID number seems too short.'),
-  id_photos: z.array(z.instanceof(File)).optional(),
   address_line1: z.string().min(5, 'Address is required.'),
   city: z.string().min(2, 'City is required.'),
   state: z.string().min(2, 'State is required.'),
@@ -109,7 +108,6 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
           state: customer.state || '',
           pin_code: customer.pin_code || '',
           notes: customer.notes || '',
-          id_photos: [],
         });
 
         if (customer.id_photo_urls && customer.id_photo_urls.length > 0) {
@@ -147,7 +145,6 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
     });
 
     if (newPhotos.length > 0) {
-      toast.info(`Compressing ${newPhotos.length} image(s)...`);
       for (const photo of newPhotos) {
         try {
           const compressedFile = await imageCompression(photo.file, {
@@ -165,21 +162,39 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
     }
     
     const existingPhotoPaths = existingPhotos.map(p => p.path);
+    formData.append('existingPhotoPaths', JSON.stringify(existingPhotoPaths));
 
-    const result = isEditMode
-      ? await updateCustomer(customer!.id, existingPhotoPaths, formData)
-      : await addCustomer(formData);
+    try {
+      let response;
+      if (isEditMode) {
+        formData.append('customerId', customer!.id);
+        response = await fetch('/api/customers', {
+          method: 'PUT',
+          body: formData,
+        });
+      } else {
+        response = await fetch('/api/customers', {
+          method: 'POST',
+          body: formData,
+        });
+      }
 
-    if (result.success) {
-      toast.success(isEditMode ? 'Customer updated successfully!' : 'Customer added successfully!');
-      onOpenChange(false);
-    } else {
-      const errorMessage = typeof result.error === 'string' 
-        ? result.error 
-        : 'An unknown error occurred.';
-      toast.error(errorMessage);
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        toast.success(isEditMode ? 'Customer updated successfully!' : 'Customer added successfully!');
+        onOpenChange(false);
+      } else {
+        const errorMessage = result.error || 'An unknown error occurred.';
+        toast.error(errorMessage);
+        console.error('API Error:', result.details);
+      }
+    } catch (error) {
+      toast.error('A network error occurred. Please try again.');
+      console.error('Fetch Error:', error);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -263,9 +278,9 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
               control={form.control}
               name="id_type"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="md:col-span-1">
                   <FormLabel>ID Type *</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select ID type" />
@@ -298,49 +313,47 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
             />
 
             <div className="md:col-span-2">
-              <FormLabel>ID Photo(s)</FormLabel>
-              <div className="mt-2 flex items-center gap-4">
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 flex-1">
-                  {existingPhotos.map((photo, index) => (
-                    <div key={photo.path} className="relative group">
-                      <img src={photo.url} alt="Existing ID" className="w-24 h-16 object-cover rounded-md" />
-                      <button type="button" onClick={() => removeExistingPhoto(index)} className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-0.5 -mt-1 -mr-1 opacity-0 group-hover:opacity-100">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  {newPhotos.map((photo, index) => (
-                    <div key={index} className="relative group">
-                      <img src={photo.url} alt="New ID" className="w-24 h-16 object-cover rounded-md" />
-                      <button type="button" onClick={() => removeNewPhoto(index)} className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-0.5 -mt-1 -mr-1 opacity-0 group-hover:opacity-100">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <FormField
-                  control={form.control}
-                  name="id_photos"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Button asChild variant="outline" size="icon">
-                          <label>
-                            <Upload className="h-4 w-4" />
-                            <Input
-                              type="file"
-                              className="sr-only"
-                              accept="image/*"
-                              multiple
-                              onChange={handleFileChange}
-                            />
-                            <span className="sr-only">Upload ID</span>
-                          </label>
-                        </Button>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+              <FormLabel>ID Photos</FormLabel>
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {isFetchingUrls && existingPhotos.length === 0 && <p>Loading photos...</p>}
+                {existingPhotos.map((photo, index) => (
+                  <div key={photo.path} className="relative group">
+                    <img src={photo.url} alt={`ID Photo ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => removeExistingPhoto(index)}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove photo"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                {newPhotos.map((photo, index) => (
+                  <div key={photo.url} className="relative group">
+                    <img src={photo.url} alt={`New ID Photo ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => removeNewPhoto(index)}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove new photo"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                <label htmlFor="id-photos-input" className="cursor-pointer w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
+                  <Upload size={32} />
+                  <span>Add Photos</span>
+                  <input
+                    id="id-photos-input"
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={handleFileChange}
+                  />
+                </label>
               </div>
             </div>
 

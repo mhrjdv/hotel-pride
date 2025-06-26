@@ -321,8 +321,9 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         extra_bed_total: 0
       };
 
-      let booking;
+      let resultBooking: any;
       if (bookingId) {
+        // Update existing booking
         const { data: updated, error: updateError } = await supabase
           .from('bookings')
           .update({
@@ -354,7 +355,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           .single();
 
         if (updateError) throw updateError;
-        booking = updated;
+        resultBooking = updated;
 
         await supabase.from('booking_guests').delete().eq('booking_id', bookingId).eq('is_primary', false);
         if (bookingData.additionalGuests && bookingData.additionalGuests.length > 0) {
@@ -368,7 +369,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         }
       } else {
         const bookingNumber = generateBookingNumber();
-        const { data: booking, error: bookingError } = await supabase
+        const { data: created, error: bookingError } = await supabase
           .from('bookings')
           .insert({
             booking_number: bookingNumber,
@@ -407,10 +408,11 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           }
           throw bookingError;
         }
+        resultBooking = created;
 
         if (bookingData.additionalGuests && bookingData.additionalGuests.length > 0) {
           const guestInserts = bookingData.additionalGuests.map(guest => ({
-            booking_id: booking.id,
+            booking_id: created.id,
             customer_id: guest.id,
             is_primary: false
           }));
@@ -428,7 +430,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           const { error: paymentError } = await supabase
             .from('payments')
             .insert({
-              booking_id: booking.id,
+              booking_id: created.id,
               amount: bookingData.paymentAmount,
               payment_method: bookingData.paymentMethod || 'cash',
               reference_number: bookingData.referenceNumber || null,
@@ -454,14 +456,12 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
             console.error('Error updating room status:', roomUpdateError);
           }
         }
-
-        clearDraft();
-        
-        toast.success('Booking created successfully!');
-        booking = { ...booking, ...bookingData };
       }
 
-      onComplete?.(booking);
+      clearDraft();
+
+      toast.success(bookingId ? 'Booking updated successfully!' : 'Booking created successfully!');
+      onComplete?.(resultBooking);
       onOpenChange?.(false);
 
     } catch (error: any) {
@@ -513,7 +513,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="w-full sm:w-full md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl h-[90vh] max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="px-6 py-4 border-b relative">
-            <DialogTitle className="text-2xl font-bold text-gray-900 pr-16">New Booking</DialogTitle>
+            <DialogTitle className="text-2xl font-bold text-gray-900 pr-16">{bookingId ? 'Edit Booking' : 'New Booking'}</DialogTitle>
             <DialogDescription className="mt-1">
                 Step {currentStep + 1} of {steps.length}: {steps[currentStep].title}
             </DialogDescription>
@@ -625,7 +625,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
                 size="lg"
               >
                 {loading && <Loader2 className="w-5 h-5 animate-spin" />}
-                {isLastStep ? 'Create Booking' : 'Next'}
+                {isLastStep ? (bookingId ? 'Save Changes' : 'Create Booking') : 'Next'}
                 {!isLastStep && <ArrowRight className="w-5 h-5" />}
               </Button>
             </div>
