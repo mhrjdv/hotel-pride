@@ -95,10 +95,19 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
     }
   }, [pricingCalculation?.baseAmount, pricingCalculation?.gstAmount, pricingCalculation?.totalAmount]);
 
+  useEffect(() => {
+    if (!data.paymentAmount && pricingCalculation) {
+      onDataChange({ paymentAmount: pricingCalculation.totalAmount });
+      setPaymentType('full');
+      setCustomAmount(pricingCalculation.totalAmount.toString());
+    }
+  }, [pricingCalculation?.totalAmount]);
+
   const handlePaymentMethodChange = (method: 'cash' | 'card' | 'upi' | 'bank_transfer') => {
     onDataChange({ 
       paymentMethod: method,
-      referenceNumber: '' // Clear reference when method changes
+      referenceNumber: '',
+      paymentAmount: paymentType === 'full' ? totalAmount : data.paymentAmount
     });
   };
 

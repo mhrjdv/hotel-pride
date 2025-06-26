@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Hotel,
   AlertTriangle,
+  AlertCircle,
   Loader2,
   X,
   Info,
@@ -28,6 +29,8 @@ import { calculateBookingAmount } from '@/lib/utils/gst';
 import { toast } from 'sonner';
 import { BookingData, Booking } from '@/lib/types/booking';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog as ConfirmDialog, DialogContent as ConfirmContent, DialogHeader as ConfirmHeader, DialogTitle as ConfirmTitle, DialogDescription as ConfirmDesc } from '@/components/ui/dialog';
 
 interface BookingWizardProps {
   onComplete?: (booking: Booking) => void;
@@ -35,6 +38,7 @@ interface BookingWizardProps {
   initialData?: Partial<BookingData>;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  bookingId?: string;
 }
 
 const steps = [
@@ -44,7 +48,7 @@ const steps = [
   { id: 'confirmation', title: 'Confirmation', icon: CheckCircle, description: 'Review and confirm' }
 ];
 
-export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true, onOpenChange }: BookingWizardProps) {
+export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true, onOpenChange, bookingId }: BookingWizardProps) {
   const supabase = createClient();
   
   const [currentStep, setCurrentStep] = useState(0);
@@ -56,6 +60,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
   const [lastSavedDraft, setLastSavedDraft] = useState<Date | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
   const [direction, setDirection] = useState(1);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -69,6 +74,54 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
       }
     }
   }, []);
+
+  useEffect(() => {
+    const fetchExistingBooking = async () => {
+      if (!bookingId) return;
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select(`*, rooms (*), customers:primary_customer_id (*), booking_guests (*, customers (*))`)
+          .eq('id', bookingId)
+          .single();
+        if (error) {
+          console.error('Error fetching booking for edit:', error);
+          toast.error('Failed to load booking for editing');
+          return;
+        }
+        if (!data) return;
+        const transformed: BookingData = {
+          room: data.rooms,
+          checkInDate: data.check_in_date,
+          checkOutDate: data.check_out_date,
+          totalNights: data.total_nights,
+          totalGuests: data.total_guests,
+          adults: data.adults,
+          children: data.children,
+          primaryGuest: data.customers,
+          additionalGuests: (data.booking_guests || [])
+            .filter((g: any) => !g.is_primary && g.customers)
+            .map((g: any) => g.customers),
+          useCustomRate: data.custom_rate_applied,
+          customRoomRate: data.custom_rate_applied ? data.room_rate : undefined,
+          gstMode: data.gst_mode,
+          extraBeds: data.extra_bed_count && data.extra_bed_count > 0 ? {
+            quantity: data.extra_bed_count,
+            ratePerBed: data.extra_bed_rate
+          } : undefined,
+          additionalCharges: data.additional_charges ? JSON.parse(data.additional_charges) : undefined,
+          paymentMethod: undefined,
+          paymentAmount: undefined,
+          bookingSource: data.booking_source,
+          specialRequests: data.special_requests
+        };
+        setBookingData(transformed);
+      } catch (err) {
+        console.error('Unexpected error loading booking:', err);
+      }
+    };
+    fetchExistingBooking();
+  }, [bookingId]);
 
   const saveDraft = useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -151,7 +204,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           today.setHours(0, 0, 0, 0);
           
           if (checkIn < today) errors.push('Check-in date cannot be in the past');
-          if (checkOut <= checkIn) errors.push('Check-out date must be after check-in date');
+          if (checkOut < checkIn) errors.push('Check-out date must be the same or after check-in date');
         }
         break;
         
@@ -169,11 +222,6 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         if (!bookingData.paymentMethod) errors.push('Please select a payment method');
         if (bookingData.paymentAmount === undefined || bookingData.paymentAmount < 0) {
           errors.push('Please enter a valid payment amount');
-        }
-        if (bookingData.paymentMethod && bookingData.paymentMethod !== 'cash') {
-          if (!bookingData.referenceNumber || bookingData.referenceNumber.trim().length === 0) {
-            errors.push('Please enter a transaction reference number');
-          }
         }
         break;
         
@@ -220,19 +268,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
   const handleCancel = () => {
     if (Object.keys(bookingData).length > 0) {
-      toast('Are you sure you want to cancel?', {
-        action: {
-          label: 'Yes, Cancel',
-          onClick: () => {
-            onCancel?.();
-            onOpenChange?.(false);
-          },
-        },
-        cancel: {
-          label: 'No',
-          onClick: () => {},
-        },
-      });
+      setConfirmCancelOpen(true);
     } else {
       onCancel?.();
       onOpenChange?.(false);
@@ -285,98 +321,154 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         extra_bed_total: 0
       };
 
-      const bookingNumber = generateBookingNumber();
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .insert({
-          booking_number: bookingNumber,
-          room_id: bookingData.room!.id,
-          primary_customer_id: bookingData.primaryGuest!.id,
-          check_in_date: bookingData.checkInDate!,
-          check_out_date: bookingData.checkOutDate!,
-          total_guests: bookingData.totalGuests || 1,
-          adults: bookingData.adults || 1,
-          children: bookingData.children || 0,
-          room_rate: bookingData.useCustomRate && bookingData.customRoomRate ? 
-            bookingData.customRoomRate : bookingData.room!.current_rate,
-          original_room_rate: bookingData.room!.current_rate,
-          custom_rate_applied: !!bookingData.useCustomRate,
-          total_nights: bookingData.totalNights!,
-          ...extraBedData,
-          additional_charges: bookingData.additionalCharges ? JSON.stringify(bookingData.additionalCharges) : null,
-          base_amount: pricing.baseAmount,
-          gst_amount: pricing.gstAmount,
-          total_amount: pricing.totalAmount,
-          gst_mode: bookingData.gstMode || 'inclusive',
-          booking_source: bookingData.bookingSource || 'walk_in',
-          special_requests: bookingData.specialRequests,
-          booking_status: 'confirmed',
-          payment_status: bookingData.paymentAmount === pricing.totalAmount ? 'paid' : 
-                         bookingData.paymentAmount && bookingData.paymentAmount > 0 ? 'partial' : 'pending',
-          paid_amount: bookingData.paymentAmount || 0,
-          created_by: user.id
-        })
-        .select()
-        .single();
+      let booking;
+      if (bookingId) {
+        const { data: updated, error: updateError } = await supabase
+          .from('bookings')
+          .update({
+            room_id: bookingData.room!.id,
+            primary_customer_id: bookingData.primaryGuest!.id,
+            check_in_date: bookingData.checkInDate!,
+            check_out_date: bookingData.checkOutDate!,
+            total_guests: bookingData.totalGuests || 1,
+            adults: bookingData.adults || 1,
+            children: bookingData.children || 0,
+            room_rate: bookingData.useCustomRate && bookingData.customRoomRate ? 
+              bookingData.customRoomRate : bookingData.room!.current_rate,
+            original_room_rate: bookingData.room!.current_rate,
+            custom_rate_applied: !!bookingData.useCustomRate,
+            total_nights: bookingData.totalNights!,
+            ...extraBedData,
+            additional_charges: bookingData.additionalCharges ? JSON.stringify(bookingData.additionalCharges) : null,
+            base_amount: pricing.baseAmount,
+            gst_amount: pricing.gstAmount,
+            total_amount: pricing.totalAmount,
+            gst_mode: bookingData.gstMode || 'inclusive',
+            booking_source: bookingData.bookingSource || 'walk_in',
+            special_requests: bookingData.specialRequests,
+            updated_by: user.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', bookingId)
+          .select()
+          .single();
 
-      if (bookingError) throw bookingError;
+        if (updateError) throw updateError;
+        booking = updated;
 
-      if (bookingData.additionalGuests && bookingData.additionalGuests.length > 0) {
-        const guestInserts = bookingData.additionalGuests.map(guest => ({
-          booking_id: booking.id,
-          customer_id: guest.id,
-          is_primary: false
-        }));
-
-        const { error: guestsError } = await supabase
-          .from('booking_guests')
-          .insert(guestInserts);
-
-        if (guestsError) {
-          console.error('Error adding additional guests:', guestsError);
+        await supabase.from('booking_guests').delete().eq('booking_id', bookingId).eq('is_primary', false);
+        if (bookingData.additionalGuests && bookingData.additionalGuests.length > 0) {
+          const inserts = bookingData.additionalGuests.map(guest => ({
+            booking_id: bookingId,
+            customer_id: guest.id,
+            is_primary: false
+          }));
+          const { error: addGuestsErr } = await supabase.from('booking_guests').insert(inserts);
+          if (addGuestsErr) console.error('Error re-adding guests:', addGuestsErr);
         }
-      }
-
-      if (bookingData.paymentAmount && bookingData.paymentAmount > 0) {
-        const { error: paymentError } = await supabase
-          .from('payments')
+      } else {
+        const bookingNumber = generateBookingNumber();
+        const { data: booking, error: bookingError } = await supabase
+          .from('bookings')
           .insert({
-            booking_id: booking.id,
-            amount: bookingData.paymentAmount,
-            payment_method: bookingData.paymentMethod || 'cash',
-            reference_number: bookingData.referenceNumber,
-            payment_notes: bookingData.paymentNotes,
-            payment_status: 'completed',
-            payment_date: new Date().toISOString(),
+            booking_number: bookingNumber,
+            room_id: bookingData.room!.id,
+            primary_customer_id: bookingData.primaryGuest!.id,
+            check_in_date: bookingData.checkInDate!,
+            check_out_date: bookingData.checkOutDate!,
+            total_guests: bookingData.totalGuests || 1,
+            adults: bookingData.adults || 1,
+            children: bookingData.children || 0,
+            room_rate: bookingData.useCustomRate && bookingData.customRoomRate ? 
+              bookingData.customRoomRate : bookingData.room!.current_rate,
+            original_room_rate: bookingData.room!.current_rate,
+            custom_rate_applied: !!bookingData.useCustomRate,
+            total_nights: bookingData.totalNights!,
+            ...extraBedData,
+            additional_charges: bookingData.additionalCharges ? JSON.stringify(bookingData.additionalCharges) : null,
+            base_amount: pricing.baseAmount,
+            gst_amount: pricing.gstAmount,
+            total_amount: pricing.totalAmount,
+            gst_mode: bookingData.gstMode || 'inclusive',
+            booking_source: bookingData.bookingSource || 'walk_in',
+            special_requests: bookingData.specialRequests,
+            booking_status: 'confirmed',
+            payment_status: bookingData.paymentAmount === pricing.totalAmount ? 'paid' : 
+                           bookingData.paymentAmount && bookingData.paymentAmount > 0 ? 'partial' : 'pending',
+            paid_amount: bookingData.paymentAmount || 0,
             created_by: user.id
-          });
+          })
+          .select()
+          .single();
 
-        if (paymentError) {
-          console.error('Error creating payment record:', paymentError);
+        if (bookingError) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Supabase booking insert error:', JSON.stringify(bookingError, null, 2));
+          }
+          throw bookingError;
         }
+
+        if (bookingData.additionalGuests && bookingData.additionalGuests.length > 0) {
+          const guestInserts = bookingData.additionalGuests.map(guest => ({
+            booking_id: booking.id,
+            customer_id: guest.id,
+            is_primary: false
+          }));
+
+          const { error: guestsError } = await supabase
+            .from('booking_guests')
+            .insert(guestInserts);
+
+          if (guestsError) {
+            console.error('Error adding additional guests:', guestsError);
+          }
+        }
+
+        if (bookingData.paymentAmount && bookingData.paymentAmount > 0) {
+          const { error: paymentError } = await supabase
+            .from('payments')
+            .insert({
+              booking_id: booking.id,
+              amount: bookingData.paymentAmount,
+              payment_method: bookingData.paymentMethod || 'cash',
+              reference_number: bookingData.referenceNumber || null,
+              payment_notes: bookingData.paymentNotes,
+              payment_status: 'completed',
+              payment_date: new Date().toISOString(),
+              created_by: user.id
+            });
+
+          if (paymentError) {
+            console.error('Error creating payment record:', paymentError);
+          }
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        if (bookingData.checkInDate === today) {
+          const { error: roomUpdateError } = await supabase
+            .from('rooms')
+            .update({ status: 'occupied' })
+            .eq('id', bookingData.room!.id);
+
+          if (roomUpdateError) {
+            console.error('Error updating room status:', roomUpdateError);
+          }
+        }
+
+        clearDraft();
+        
+        toast.success('Booking created successfully!');
+        booking = { ...booking, ...bookingData };
       }
 
-      const today = new Date().toISOString().split('T')[0];
-      if (bookingData.checkInDate === today) {
-        const { error: roomUpdateError } = await supabase
-          .from('rooms')
-          .update({ status: 'occupied' })
-          .eq('id', bookingData.room!.id);
-
-        if (roomUpdateError) {
-          console.error('Error updating room status:', roomUpdateError);
-        }
-      }
-
-      clearDraft();
-      
-      toast.success('Booking created successfully!');
       onComplete?.(booking);
       onOpenChange?.(false);
 
-    } catch (error) {
-      console.error('Booking creation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create booking';
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Booking creation error object:', JSON.stringify(error, null, 2));
+      }
+      const errorMessage = error?.message || error?.details || 'Failed to create booking';
       setError(errorMessage);
       toast.error('Failed to create booking. Please try again.');
     } finally {
@@ -477,6 +569,14 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           {/* Main Content */}
           <main className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 relative overflow-y-auto p-6">
+                {(error || validationMessage) && (
+                  <Alert className="border-red-200 bg-red-50 mb-4">
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                    <AlertDescription className="text-red-800">
+                      {error ?? validationMessage}
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <AnimatePresence initial={false} custom={direction}>
                     <motion.div
                         key={currentStep}
@@ -532,6 +632,18 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           </div>
         </div>
       </DialogContent>
+      <ConfirmDialog open={confirmCancelOpen} onOpenChange={setConfirmCancelOpen}>
+        <ConfirmContent className="max-w-sm">
+          <ConfirmHeader>
+            <ConfirmTitle>Discard this booking?</ConfirmTitle>
+            <ConfirmDesc>All unsaved changes will be lost.</ConfirmDesc>
+          </ConfirmHeader>
+          <div className="flex justify-end gap-4 mt-4">
+            <Button variant="outline" onClick={() => setConfirmCancelOpen(false)}>Continue Editing</Button>
+            <Button variant="destructive" onClick={() => { setConfirmCancelOpen(false); onCancel?.(); onOpenChange?.(false); }}>Discard</Button>
+          </div>
+        </ConfirmContent>
+      </ConfirmDialog>
     </Dialog>
   );
 } 

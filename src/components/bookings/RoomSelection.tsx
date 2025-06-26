@@ -66,7 +66,7 @@ export function RoomSelection({ data, onDataChange }: RoomSelectionProps) {
     if (data.checkInDate && data.checkOutDate) {
       const checkIn = new Date(data.checkInDate);
       const checkOut = new Date(data.checkOutDate);
-      if (checkOut > checkIn) {
+      if (checkOut >= checkIn) {
         searchAvailableRooms(data.checkInDate, data.checkOutDate);
       } else {
         setAvailableRooms([]);
@@ -108,8 +108,10 @@ export function RoomSelection({ data, onDataChange }: RoomSelectionProps) {
     const start = new Date(checkIn);
     const end = new Date(checkOut);
     const diffTime = end.getTime() - start.getTime();
-    const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return nights > 0 ? nights : 0;
+    const calcDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // Same-day stay counts as 1 night
+    if (calcDays <= 0) return 1;
+    return calcDays;
   };
 
   const handleDateChange = (field: 'checkInDate' | 'checkOutDate', value: string) => {
