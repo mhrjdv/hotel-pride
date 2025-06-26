@@ -1,33 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { 
   Loader2, 
   Calendar, 
-  Users, 
   Hotel, 
-  Wifi, 
-  Tv, 
-  Car, 
-  Coffee, 
-  Snowflake, 
-  Wind, 
   IndianRupee, 
-  Settings,
-  Bed,
-  Plus,
-  Minus,
-  Info
+  ChevronDown,
+  ChevronUp,
+  Snowflake,
+  Tv,
+  Wifi,
+  Wind,
+  ParkingSquare,
+  Coffee,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { calculateBookingAmount, formatBookingCalculation, GSTMode } from '@/lib/utils/gst';
@@ -38,39 +32,36 @@ interface RoomSelectionProps {
   onDataChange: (data: Partial<BookingData>) => void;
 }
 
-const roomTypeLabels = {
-  'ac-2bed': 'AC 2-Bed Room',
-  'non-ac-2bed': 'Non-AC 2-Bed Room',
-  'ac-3bed': 'AC 3-Bed Room',
-  'non-ac-3bed': 'Non-AC 3-Bed Room',
-  'vip-ac': 'VIP AC Suite',
-  'vip-non-ac': 'VIP Non-AC Suite'
-};
-
-const amenityIcons = {
+const amenityIcons: { [key: string]: React.ElementType } = {
   'Air Conditioning': Snowflake,
   'Television': Tv,
   'Wi-Fi': Wifi,
-  'Parking': Car,
+  'Fan': Wind,
+  'Parking': ParkingSquare,
   'Coffee': Coffee,
-  'Fan': Wind
 };
 
-const gstModeLabels = {
-  'inclusive': 'GST Inclusive (12% included in price)',
-  'exclusive': 'GST Exclusive (12% added to price)',
-  'none': 'No GST (Tax-free booking)'
-};
+const getRoomTypeLabel = (type: string) => {
+  const labels: { [key: string]: string } = {
+    'ac-2bed': 'AC 2-Bed Room',
+    'non-ac-2bed': 'Non-AC 2-Bed Room',
+    'ac-3bed': 'AC 3-Bed Room',
+    'non-ac-3bed': 'Non-AC 3-Bed Room',
+    'vip-ac': 'VIP AC Suite',
+    'vip-non-ac': 'VIP Non-AC Suite'
+  };
+  return labels[type] || type;
+}
+
 
 export function RoomSelection({ data, onDataChange }: RoomSelectionProps) {
   const supabase = createClient();
-  const [rooms, setRooms] = useState<Room[]>([]);
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchingRooms, setSearchingRooms] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
 
-  // Search for available rooms when dates change
+  const today = new Date().toISOString().split('T')[0];
+
   useEffect(() => {
     if (data.checkInDate && data.checkOutDate) {
       const checkIn = new Date(data.checkInDate);
@@ -78,32 +69,19 @@ export function RoomSelection({ data, onDataChange }: RoomSelectionProps) {
       if (checkOut > checkIn) {
         searchAvailableRooms(data.checkInDate, data.checkOutDate);
       } else {
-        setAvailableRooms([]); // Clear if dates are invalid
+        setAvailableRooms([]);
+        onDataChange({ room: undefined }); // Clear selected room if dates are invalid
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.checkInDate, data.checkOutDate]);
-
-  // Recalculate pricing when relevant data changes
-  useEffect(() => {
-    if (data.room && data.totalNights) {
-      updatePricing();
-    }
-  }, [
-    data.room,
-    data.totalNights,
-    data.roomRate,
-    data.customRoomRate,
-    data.useCustomRate,
-    data.gstMode,
-    data.extraBeds,
-    data.additionalCharges
-  ]);
-
+  
   const searchAvailableRooms = async (startDate: string, endDate: string) => {
     if (!startDate || !endDate) return;
 
     setSearchingRooms(true);
     setAvailableRooms([]);
+    onDataChange({ room: undefined }); // Clear previous selection
 
     const { data: available, error } = await supabase.rpc('get_available_rooms', {
       start_date: startDate,
@@ -115,613 +93,305 @@ export function RoomSelection({ data, onDataChange }: RoomSelectionProps) {
       console.error('Error checking availability:', error);
     } else {
       setAvailableRooms(available || []);
+      if (available && available.length > 0) {
+        toast.success(`Found ${available.length} available room(s).`);
+      } else {
+        toast.info('No rooms available for the selected dates.');
+      }
     }
     
     setSearchingRooms(false);
   };
 
-  const updatePricing = () => {
-    if (!data.room || !data.totalNights) return;
+  const calculateNights = (checkIn: string, checkOut: string) => {
+    if (!checkIn || !checkOut) return 0;
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    const diffTime = end.getTime() - start.getTime();
+    const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return nights > 0 ? nights : 0;
+  };
 
-    const calculation = calculateBookingAmount({
-      baseRoomRate: data.room.current_rate,
+  const handleDateChange = (field: 'checkInDate' | 'checkOutDate', value: string) => {
+    const otherField = field === 'checkInDate' ? 'checkOutDate' : 'checkInDate';
+    const checkIn = field === 'checkInDate' ? value : data.checkInDate || '';
+    const checkOut = field === 'checkOutDate' ? value : data.checkOutDate || '';
+    
+    const nights = calculateNights(checkIn, checkOut);
+    
+    onDataChange({ [field]: value, totalNights: nights });
+  };
+
+  const handleRoomSelect = (roomId: string) => {
+    const selectedRoom = availableRooms.find(r => r.id === roomId);
+    if (selectedRoom) {
+      onDataChange({
+        room: selectedRoom,
+        roomRate: selectedRoom.current_rate,
+        useCustomRate: false, // Reset custom rate on new room selection
+        gstMode: data.gstMode || 'inclusive'
+      });
+    }
+  };
+
+  const selectedRoom = useMemo(() => data.room, [data.room]);
+
+  const pricingCalculation = useMemo(() => {
+    if (!selectedRoom || !data.totalNights) return null;
+    return calculateBookingAmount({
+      baseRoomRate: selectedRoom.current_rate,
       customRoomRate: data.useCustomRate ? data.customRoomRate : undefined,
       nights: data.totalNights,
       extraBeds: data.extraBeds,
       additionalCharges: data.additionalCharges,
       gstMode: data.gstMode || 'inclusive'
     });
-
-    onDataChange({
-      baseAmount: calculation.baseAmount,
-      gstAmount: calculation.gstAmount,
-      totalAmount: calculation.totalAmount
-    });
-  };
-
-  const calculateNights = (checkIn: string, checkOut: string) => {
-    const start = new Date(checkIn);
-    const end = new Date(checkOut);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
-  const handleDateChange = (field: 'checkInDate' | 'checkOutDate', value: string) => {
-    const updates: Partial<BookingData> = { [field]: value };
-    
-    if (field === 'checkInDate' && data.checkOutDate) {
-      const nights = calculateNights(value, data.checkOutDate);
-      updates.totalNights = nights;
-    } else if (field === 'checkOutDate' && data.checkInDate) {
-      const nights = calculateNights(data.checkInDate, value);
-      updates.totalNights = nights;
+  }, [
+    selectedRoom,
+    data.totalNights,
+    data.useCustomRate,
+    data.customRoomRate,
+    data.extraBeds,
+    data.additionalCharges,
+    data.gstMode
+  ]);
+  
+  useEffect(() => {
+    if (pricingCalculation) {
+      onDataChange({
+        baseAmount: pricingCalculation.baseAmount,
+        gstAmount: pricingCalculation.gstAmount,
+        totalAmount: pricingCalculation.totalAmount,
+      });
     }
-
-    onDataChange(updates);
-  };
-
-  const handleGuestChange = (adults: number, children: number) => {
-    onDataChange({
-      adults,
-      children,
-      totalGuests: adults + children
-    });
-  };
-
-  const handleRoomSelect = (room: Room) => {
-    onDataChange({
-      room,
-      roomRate: room.current_rate,
-      gstMode: data.gstMode || 'inclusive'
-    });
-  };
-
-  const handleCustomRateToggle = (useCustom: boolean) => {
-    const updates: Partial<BookingData> = {
-      useCustomRate: useCustom
-    };
-
-    if (useCustom && !data.customRoomRate) {
-      updates.customRoomRate = data.roomRate || data.room?.current_rate || 0;
-    }
-
-    onDataChange(updates);
-  };
-
-  const handleExtraBedChange = (field: 'quantity' | 'ratePerBed', value: number) => {
-    const currentExtraBeds = data.extraBeds || { quantity: 0, ratePerBed: 0 };
-    const updatedExtraBeds = {
-      ...currentExtraBeds,
-      [field]: value
-    };
-
-    onDataChange({
-      extraBeds: updatedExtraBeds
-    });
-  };
-
-  const addAdditionalCharge = () => {
-    const currentCharges = data.additionalCharges || [];
-    onDataChange({
-      additionalCharges: [...currentCharges, { description: '', amount: 0 }]
-    });
-  };
-
-  const updateAdditionalCharge = (index: number, field: 'description' | 'amount', value: string | number) => {
-    const currentCharges = data.additionalCharges || [];
-    const updatedCharges = currentCharges.map((charge, i) => 
-      i === index ? { ...charge, [field]: value } : charge
-    );
-    onDataChange({
-      additionalCharges: updatedCharges
-    });
-  };
-
-  const removeAdditionalCharge = (index: number) => {
-    const currentCharges = data.additionalCharges || [];
-    onDataChange({
-      additionalCharges: currentCharges.filter((_, i) => i !== index)
-    });
-  };
-
-  // Allow back-dating (past dates)
-  const minDate = '2020-01-01'; // Allow reasonable back-dating
-
-  // Calculate pricing display
-  const pricingCalculation = data.room && data.totalNights ? calculateBookingAmount({
-    baseRoomRate: data.room.current_rate,
-    customRoomRate: data.useCustomRate ? data.customRoomRate : undefined,
-    nights: data.totalNights,
-    extraBeds: data.extraBeds,
-    additionalCharges: data.additionalCharges,
-    gstMode: data.gstMode || 'inclusive'
-  }) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricingCalculation]);
 
   const formattedPricing = pricingCalculation ? formatBookingCalculation(pricingCalculation) : null;
 
+  const summaryItems = useMemo(() => {
+    if (!formattedPricing || !data.totalNights) return [];
+
+    const items = [
+      { label: `Room Charges (${data.totalNights} nights)`, value: formattedPricing.roomCharges, isBold: false },
+    ];
+
+    if (formattedPricing.extraBedCharges) {
+      items.push({ label: 'Extra Bed Charges', value: formattedPricing.extraBedCharges, isBold: false });
+    }
+    if (formattedPricing.additionalCharges) {
+      items.push({ label: 'Additional Charges', value: formattedPricing.additionalCharges, isBold: false });
+    }
+
+    items.push({ label: 'Subtotal', value: formattedPricing.subtotal, isBold: true });
+    
+    if (formattedPricing.showGST) {
+      items.push({ label: `GST (12%)`, value: formattedPricing.gstAmount, isBold: false });
+    }
+
+    return items;
+  }, [formattedPricing, data.totalNights]);
+
   return (
-    <div className="space-y-6">
-      {/* Date and Guest Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            Stay Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="checkIn">Check-in Date</Label>
-              <Input
-                id="checkIn"
-                type="date"
-                value={data.checkInDate || ''}
-                min={minDate}
-                onChange={(e) => handleDateChange('checkInDate', e.target.value)}
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">Back-dating allowed for corrections</p>
-            </div>
-            <div>
-              <Label htmlFor="checkOut">Check-out Date</Label>
-              <Input
-                id="checkOut"
-                type="date"
-                value={data.checkOutDate || ''}
-                min={data.checkInDate || minDate}
-                onChange={(e) => handleDateChange('checkOutDate', e.target.value)}
-                className="mt-1"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="adults">Adults</Label>
-              <Select 
-                value={data.adults?.toString() || '1'}
-                onValueChange={(value) => handleGuestChange(parseInt(value), data.children || 0)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5, 6].map(num => (
-                    <SelectItem key={num} value={num.toString()}>{num}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="children">Children</Label>
-              <Select 
-                value={data.children?.toString() || '0'}
-                onValueChange={(value) => handleGuestChange(data.adults || 1, parseInt(value))}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 1, 2, 3, 4].map(num => (
-                    <SelectItem key={num} value={num.toString()}>{num}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="source">Booking Source</Label>
-              <Select 
-                value={data.bookingSource || 'walk_in'}
-                onValueChange={(value: any) => onDataChange({ bookingSource: value })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="walk_in">Walk-in</SelectItem>
-                  <SelectItem value="phone">Phone</SelectItem>
-                  <SelectItem value="online">Online</SelectItem>
-                  <SelectItem value="agent">Agent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {data.checkInDate && data.checkOutDate && data.totalNights && (
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>{data.totalNights}</strong> night{data.totalNights > 1 ? 's' : ''} •
-                <strong> {data.totalGuests}</strong> guest{data.totalGuests > 1 ? 's' : ''}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Room Selection */}
-      {data.checkInDate && data.checkOutDate && (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      {/* Left Column: Selections */}
+      <div className="lg:col-span-2 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Hotel className="w-5 h-5" />
-              Available Rooms ({availableRooms.length})
-              {searchingRooms && <Loader2 className="w-4 h-4 animate-spin" />}
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Calendar className="w-6 h-6 text-blue-600" />
+              <span>Select Dates & Room</span>
+            </CardTitle>
+            <CardDescription>
+              Choose check-in and check-out dates to find available rooms.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="checkInDate">Check-in Date</Label>
+              <Input
+                id="checkInDate"
+                type="date"
+                value={data.checkInDate || ''}
+                onChange={(e) => handleDateChange('checkInDate', e.target.value)}
+                min={today}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="checkOutDate">Check-out Date</Label>
+              <Input
+                id="checkOutDate"
+                type="date"
+                value={data.checkOutDate || ''}
+                onChange={(e) => handleDateChange('checkOutDate', e.target.value)}
+                min={data.checkInDate || today}
+                className="mt-1"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="availableRooms">Available Rooms</Label>
+              <Select
+                value={selectedRoom?.id || ''}
+                onValueChange={handleRoomSelect}
+                disabled={searchingRooms || availableRooms.length === 0}
+              >
+                <SelectTrigger id="availableRooms" className="mt-1">
+                  <SelectValue placeholder={
+                    searchingRooms 
+                      ? "Searching..." 
+                      : (data.checkInDate && data.checkOutDate)
+                        ? "Select an available room"
+                        : "Please select dates first"
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  {searchingRooms ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                  ) : (
+                    availableRooms.map(room => (
+                      <SelectItem key={room.id} value={room.id}>
+                        Room {room.room_number} ({getRoomTypeLabel(room.room_type)}) - ₹{room.current_rate}/night
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {selectedRoom && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Hotel className="w-6 h-6 text-blue-600" />
+                <span>Room Details: {selectedRoom.room_number}</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+               <div className="flex justify-between items-center">
+                 <p className="text-lg font-semibold">{getRoomTypeLabel(selectedRoom.room_type)}</p>
+                 <Badge variant="secondary" className="text-base">Max Occupancy: {selectedRoom.max_occupancy}</Badge>
+               </div>
+               <Separator className="my-4" />
+               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {(selectedRoom.amenities as string[])?.map(amenity => {
+                    const Icon = amenityIcons[amenity];
+                    return (
+                      <div key={amenity} className="flex items-center gap-2 text-sm">
+                        {Icon && <Icon className="w-4 h-4 text-gray-600" />}
+                        <span>{amenity}</span>
+                      </div>
+                    );
+                })}
+               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between cursor-pointer" onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}>
+            <div>
+              <CardTitle className="text-xl">Pricing & Options</CardTitle>
+              <CardDescription>Configure rates, GST, and extra charges.</CardDescription>
+            </div>
+            {showAdvancedOptions ? <ChevronUp /> : <ChevronDown />}
+          </CardHeader>
+          {showAdvancedOptions && (
+            <CardContent className="space-y-6 pt-6">
+                <div className="flex items-center space-x-2">
+                    <Switch
+                        id="customRate"
+                        checked={!!data.useCustomRate}
+                        onCheckedChange={(checked) => onDataChange({
+                            useCustomRate: checked,
+                            customRoomRate: checked ? selectedRoom?.current_rate || 0 : undefined
+                        })}
+                        disabled={!selectedRoom}
+                    />
+                    <Label htmlFor="customRate" className="text-base">Use Custom Room Rate</Label>
+                </div>
+
+                {data.useCustomRate && (
+                    <div className="grid gap-2">
+                        <Label htmlFor="customRoomRate">Custom Rate (per night)</Label>
+                        <Input
+                            id="customRoomRate"
+                            type="number"
+                            value={data.customRoomRate || ''}
+                            onChange={(e) => onDataChange({ customRoomRate: parseFloat(e.target.value) || 0 })}
+                            disabled={!selectedRoom}
+                        />
+                    </div>
+                )}
+                <Separator/>
+                 <div>
+                    <Label>GST Mode</Label>
+                    <Select
+                        value={data.gstMode || 'inclusive'}
+                        onValueChange={(value: GSTMode) => onDataChange({ gstMode: value })}
+                    >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="inclusive">Inclusive (12% in price)</SelectItem>
+                            <SelectItem value="exclusive">Exclusive (12% added)</SelectItem>
+                            <SelectItem value="none">No GST</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </CardContent>
+          )}
+        </Card>
+      </div>
+
+      {/* Right Column: Pricing Summary */}
+      <div className="lg:col-span-1 space-y-6">
+        <Card className="sticky top-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <IndianRupee className="w-6 h-6 text-green-600" />
+              <span>Booking Summary</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-              </div>
-            ) : availableRooms.length === 0 ? (
-              <div className="text-center py-8 text-gray-600">
-                <Hotel className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-lg font-medium mb-2">No rooms available</p>
-                <p>Please try different dates or contact reception for assistance.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {availableRooms.map((room) => (
-                  <Card
-                    key={room.id}
-                    className={`cursor-pointer transition-all hover:shadow-md ${
-                      data.room?.id === room.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-                    }`}
-                    onClick={() => handleRoomSelect(room)}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{room.room_number}</CardTitle>
-                        <Badge variant="outline" className="capitalize">
-                          {roomTypeLabels[room.room_type as keyof typeof roomTypeLabels]}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Rate per night</span>
-                        <span className="text-lg font-bold text-green-600">
-                          ₹{room.current_rate.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Max occupancy</span>
-                        <span className="flex items-center gap-1">
-                          <Users className="w-4 h-4" />
-                          {room.max_occupancy} guests
-                        </span>
-                      </div>
-
-                      {room.amenities && room.amenities.length > 0 && (
-                        <div>
-                          <p className="text-sm text-gray-600 mb-2">Amenities</p>
-                          <div className="flex flex-wrap gap-2">
-                            {room.amenities.slice(0, 3).map((amenity, index) => {
-                              const IconComponent = amenityIcons[amenity as keyof typeof amenityIcons];
-                              return (
-                                <Badge key={index} variant="secondary" className="text-xs">
-                                  {IconComponent && <IconComponent className="w-3 h-3 mr-1" />}
-                                  {amenity}
-                                </Badge>
-                              );
-                            })}
-                            {room.amenities.length > 3 && (
-                              <Badge variant="secondary" className="text-xs">
-                                +{room.amenities.length - 3} more
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {data.room?.id === room.id && (
-                        <div className="text-sm text-emerald-600 font-medium">
-                          ✓ Selected Room
-                        </div>
-                      )}
-
-                      {data.room?.id !== room.id && (
-                        <div className="pt-2 border-t">
-                          <Badge className="w-full justify-center bg-blue-600">
-                            Select This Room
-                          </Badge>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pricing Configuration */}
-      {data.room && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <IndianRupee className="w-5 h-5" />
-                Pricing Configuration
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                {showAdvancedOptions ? 'Hide' : 'Show'} Advanced Options
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* GST Configuration */}
-            <div>
-              <Label className="text-base font-medium">GST Configuration</Label>
-              <div className="mt-2 space-y-3">
-                {Object.entries(gstModeLabels).map(([mode, label]) => (
-                  <div key={mode} className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      id={`gst-${mode}`}
-                      name="gstMode"
-                      value={mode}
-                      checked={data.gstMode === mode || (!data.gstMode && mode === 'inclusive')}
-                      onChange={() => onDataChange({ gstMode: mode as GSTMode })}
-                      className="text-blue-600"
-                    />
-                    <Label htmlFor={`gst-${mode}`} className="text-sm cursor-pointer">
-                      {label}
-                    </Label>
-                  </div>
-                ))}
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <Info className="w-4 h-4 text-amber-600 mt-0.5" />
-                    <div className="text-sm text-amber-800">
-                      <p className="font-medium">GST Information:</p>
-                      <p>• Inclusive: 12% GST is included in the displayed price</p>
-                      <p>• Exclusive: 12% GST will be added to the displayed price</p>
-                      <p>• None: No GST will be applied (for special cases)</p>
-                    </div>
-                  </div>
+            {selectedRoom && data.totalNights ? (
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span>Room</span>
+                  <span className="font-medium">#{selectedRoom.room_number}</span>
                 </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Custom Room Rate */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-base font-medium">Room Rate Override</Label>
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="custom-rate-toggle" className="text-sm">Use custom rate</Label>
-                  <Switch
-                    id="custom-rate-toggle"
-                    checked={data.useCustomRate || false}
-                    onCheckedChange={handleCustomRateToggle}
-                  />
+                <div className="flex justify-between">
+                  <span>Duration</span>
+                  <span className="font-medium">{data.totalNights} Night(s)</span>
                 </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm text-gray-600">Default Rate (per night)</Label>
-                  <div className="mt-1 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-lg font-semibold">₹{data.room.current_rate.toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-                {data.useCustomRate && (
-                  <div>
-                    <Label htmlFor="customRate" className="text-sm text-gray-600">Custom Rate (per night)</Label>
-                    <Input
-                      id="customRate"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={data.customRoomRate || ''}
-                      onChange={(e) => onDataChange({ customRoomRate: parseFloat(e.target.value) || 0 })}
-                      className="mt-1"
-                      placeholder="Enter custom rate"
-                    />
+                <Separator />
+                {formattedPricing && (
+                  <div className="space-y-2 text-sm">
+                    {summaryItems.map((item, index) => (
+                      <div key={index} className="flex justify-between">
+                        <span>{item.label}</span>
+                        <span className={item.isBold ? 'font-bold' : ''}>{item.value}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
+                <Separator />
+                 <div className="flex justify-between text-lg font-bold">
+                    <span>Total Amount</span>
+                    <span>{pricingCalculation ? `₹${pricingCalculation.totalAmount.toFixed(2)}` : 'N/A'}</span>
+                </div>
               </div>
-            </div>
-
-            {showAdvancedOptions && (
-              <>
-                <Separator />
-
-                {/* Extra Beds */}
-                <div>
-                  <Label className="text-base font-medium flex items-center gap-2">
-                    <Bed className="w-4 h-4" />
-                    Extra Beds
-                  </Label>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="extraBedQty" className="text-sm text-gray-600">Quantity</Label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleExtraBedChange('quantity', Math.max(0, (data.extraBeds?.quantity || 0) - 1))}
-                        >
-                          <Minus className="w-4 h-4" />
-                        </Button>
-                        <Input
-                          id="extraBedQty"
-                          type="number"
-                          min="0"
-                          max="3"
-                          value={data.extraBeds?.quantity || 0}
-                          onChange={(e) => handleExtraBedChange('quantity', parseInt(e.target.value) || 0)}
-                          className="text-center"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleExtraBedChange('quantity', Math.min(3, (data.extraBeds?.quantity || 0) + 1))}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="extraBedRate" className="text-sm text-gray-600">Rate per bed (per night)</Label>
-                      <Input
-                        id="extraBedRate"
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={data.extraBeds?.ratePerBed || 0}
-                        onChange={(e) => handleExtraBedChange('ratePerBed', parseFloat(e.target.value) || 0)}
-                        className="mt-1"
-                        placeholder="₹0 (can be free)"
-                      />
-                    </div>
-                  </div>
-                  {data.extraBeds && data.extraBeds.quantity > 0 && (
-                    <div className="mt-2 p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-blue-800">
-                        {data.extraBeds.quantity} extra bed{data.extraBeds.quantity > 1 ? 's' : ''} × 
-                        ₹{data.extraBeds.ratePerBed.toLocaleString('en-IN')} × 
-                        {data.totalNights} night{data.totalNights && data.totalNights > 1 ? 's' : ''} = 
-                        <strong> ₹{((data.extraBeds.quantity * data.extraBeds.ratePerBed * (data.totalNights || 0))).toLocaleString('en-IN')}</strong>
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Additional Charges */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <Label className="text-base font-medium">Additional Charges</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={addAdditionalCharge}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Charge
-                    </Button>
-                  </div>
-                  
-                  {data.additionalCharges && data.additionalCharges.length > 0 && (
-                    <div className="space-y-3">
-                      {data.additionalCharges.map((charge, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Input
-                            placeholder="Description (e.g., Food, Laundry)"
-                            value={charge.description}
-                            onChange={(e) => updateAdditionalCharge(index, 'description', e.target.value)}
-                            className="flex-1"
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            step="1"
-                            placeholder="Amount"
-                            value={charge.amount || ''}
-                            onChange={(e) => updateAdditionalCharge(index, 'amount', parseFloat(e.target.value) || 0)}
-                            className="w-32"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => removeAdditionalCharge(index)}
-                          >
-                            <Minus className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* Pricing Summary */}
-            {formattedPricing && (
-              <>
-                <Separator />
-                <div>
-                  <Label className="text-base font-medium">Pricing Summary</Label>
-                  <div className="mt-3 space-y-2 bg-gray-50 p-4 rounded-lg">
-                    <div className="flex justify-between text-sm">
-                      <span>Room charges ({data.totalNights} nights)</span>
-                      <span>{formattedPricing.roomCharges}</span>
-                    </div>
-                    
-                    {formattedPricing.extraBedCharges && (
-                      <div className="flex justify-between text-sm">
-                        <span>Extra bed charges</span>
-                        <span>{formattedPricing.extraBedCharges}</span>
-                      </div>
-                    )}
-                    
-                    {formattedPricing.additionalCharges && (
-                      <div className="flex justify-between text-sm">
-                        <span>Additional charges</span>
-                        <span>{formattedPricing.additionalCharges}</span>
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-between text-sm font-medium border-t pt-2">
-                      <span>Subtotal</span>
-                      <span>{formattedPricing.subtotal}</span>
-                    </div>
-                    
-                    {formattedPricing.showGST && (
-                      <div className="flex justify-between text-sm">
-                        <span>GST (12%)</span>
-                        <span>{formattedPricing.gstAmount}</span>
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-between text-lg font-bold border-t pt-2">
-                      <span>Total Amount</span>
-                      <span className="text-green-600">{formattedPricing.grandTotal}</span>
-                    </div>
-                    
-                    <div className="text-xs text-gray-500">
-                      GST Mode: {gstModeLabels[formattedPricing.gstMode]}
-                    </div>
-                  </div>
-                </div>
-              </>
+            ) : (
+              <div className="text-center text-gray-500 py-10">
+                <p>Select dates and a room to see the price summary.</p>
+              </div>
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Special Requests */}
-      {data.room && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Special Requests</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="Any special requests or preferences (optional)"
-              value={data.specialRequests || ''}
-              onChange={(e) => onDataChange({ specialRequests: e.target.value })}
-              className="min-h-[100px]"
-            />
-          </CardContent>
-        </Card>
-      )}
+      </div>
     </div>
   );
-} 
+}

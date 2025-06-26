@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { 
@@ -17,7 +17,8 @@ import {
   X,
   Info,
   Save,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 import { RoomSelection } from './RoomSelection';
 import { GuestRegistration } from './GuestRegistration';
@@ -26,6 +27,7 @@ import { BookingConfirmation } from './BookingConfirmation';
 import { calculateBookingAmount } from '@/lib/utils/gst';
 import { toast } from 'sonner';
 import { BookingData, Booking } from '@/lib/types/booking';
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface BookingWizardProps {
   onComplete?: (booking: Booking) => void;
@@ -53,10 +55,18 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
   const [isDraftSaving, setIsDraftSaving] = useState(false);
   const [lastSavedDraft, setLastSavedDraft] = useState<Date | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
+  const [direction, setDirection] = useState(1);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setHasDraft(localStorage.getItem('booking_draft') !== null);
+      const draft = localStorage.getItem('booking_draft');
+      if (draft) {
+        setHasDraft(true);
+        const parsedDraft = JSON.parse(draft);
+        if (parsedDraft.timestamp) {
+          setLastSavedDraft(new Date(parsedDraft.timestamp));
+        }
+      }
     }
   }, []);
 
@@ -64,14 +74,21 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
     if (typeof window === 'undefined') return;
     setIsDraftSaving(true);
     try {
-      localStorage.setItem('booking_draft', JSON.stringify({
+      const draftData = {
         ...bookingData,
         timestamp: new Date().toISOString()
-      }));
-      setLastSavedDraft(new Date());
+      };
+      localStorage.setItem('booking_draft', JSON.stringify(draftData));
+      
+      const savedDate = new Date();
+      setLastSavedDraft(savedDate);
       setHasDraft(true);
+      toast.success('Draft saved!', {
+        description: `Saved at ${savedDate.toLocaleTimeString()}`,
+      });
     } catch (error) {
       console.error('Failed to save draft:', error);
+      toast.error('Could not save draft.');
     } finally {
       setIsDraftSaving(false);
     }
@@ -80,48 +97,13 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
   // Auto-save draft functionality
   useEffect(() => {
     const autoSave = setTimeout(() => {
-      if (bookingData.room || bookingData.primaryGuest) {
+      if (Object.keys(bookingData).length > 0) {
         saveDraft();
       }
-    }, 30000); // Auto-save every 30 seconds
+    }, 60000); // Auto-save every 60 seconds
 
     return () => clearTimeout(autoSave);
   }, [bookingData, saveDraft]);
-
-  // Calculate pricing when relevant data changes
-  useEffect(() => {
-    if (bookingData.room && bookingData.totalNights) {
-      try {
-        const pricing = calculateBookingAmount({
-          baseRoomRate: bookingData.room.current_rate,
-          customRoomRate: bookingData.useCustomRate ? bookingData.customRoomRate : undefined,
-          nights: bookingData.totalNights,
-          extraBeds: bookingData.extraBeds,
-          additionalCharges: bookingData.additionalCharges,
-          gstMode: bookingData.gstMode || 'inclusive'
-        });
-        
-        setBookingData(prev => ({
-          ...prev,
-          baseAmount: pricing.baseAmount,
-          gstAmount: pricing.gstAmount,
-          totalAmount: pricing.totalAmount
-        }));
-      } catch (error) {
-        console.error('Error calculating pricing:', error);
-        setError('Failed to calculate pricing. Please check the entered values.');
-      }
-    }
-  }, [
-    bookingData.room,
-    bookingData.totalNights,
-    bookingData.roomRate,
-    bookingData.customRoomRate,
-    bookingData.useCustomRate,
-    bookingData.gstMode,
-    bookingData.extraBeds,
-    bookingData.additionalCharges
-  ]);
 
   const loadDraft = () => {
     if (typeof window === 'undefined') return;
@@ -129,8 +111,10 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
       const draft = localStorage.getItem('booking_draft');
       if (draft) {
         const parsedDraft = JSON.parse(draft);
-        delete parsedDraft.timestamp;
-        setBookingData(parsedDraft);
+        setBookingData(parsedDraft.data || parsedDraft); // Support both old and new draft formats
+        if (parsedDraft.timestamp) {
+           setLastSavedDraft(new Date(parsedDraft.timestamp));
+        }
         toast.success('Draft loaded successfully');
       }
     } catch (error) {
@@ -144,6 +128,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
     localStorage.removeItem('booking_draft');
     setLastSavedDraft(null);
     setHasDraft(false);
+    toast.info('Draft cleared.');
   };
 
   const currentStepId = steps[currentStep]?.id;
@@ -193,7 +178,6 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         break;
         
       case 'confirmation':
-        // Final validation - check all required fields
         if (!bookingData.room || !bookingData.primaryGuest || !bookingData.checkInDate || !bookingData.checkOutDate) {
           errors.push('Missing required booking information');
         }
@@ -213,11 +197,10 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
   const handleNext = async () => {
     setError(null);
-    
     if (!validateCurrentStep()) {
       return;
     }
-
+    setDirection(1);
     if (isLastStep) {
       await handleBookingSubmit();
     } else {
@@ -227,6 +210,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
   const handleBack = () => {
     setError(null);
+    setDirection(-1);
     if (isFirstStep) {
       handleCancel();
     } else {
@@ -235,12 +219,20 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
   };
 
   const handleCancel = () => {
-    if (typeof window !== 'undefined' && (bookingData.room || bookingData.primaryGuest)) {
-      if (window.confirm('Are you sure you want to cancel? All unsaved changes will be lost.')) {
-        clearDraft();
-        onCancel?.();
-        onOpenChange?.(false);
-      }
+    if (Object.keys(bookingData).length > 0) {
+      toast('Are you sure you want to cancel?', {
+        action: {
+          label: 'Yes, Cancel',
+          onClick: () => {
+            onCancel?.();
+            onOpenChange?.(false);
+          },
+        },
+        cancel: {
+          label: 'No',
+          onClick: () => {},
+        },
+      });
     } else {
       onCancel?.();
       onOpenChange?.(false);
@@ -274,7 +266,6 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Calculate final amounts using new system
       const pricing = calculateBookingAmount({
         baseRoomRate: bookingData.room!.current_rate,
         customRoomRate: bookingData.useCustomRate ? bookingData.customRoomRate : undefined,
@@ -284,7 +275,6 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         gstMode: bookingData.gstMode || 'inclusive'
       });
 
-      // Prepare extra bed and additional charges data
       const extraBedData = bookingData.extraBeds && bookingData.extraBeds.quantity > 0 ? {
         extra_bed_count: bookingData.extraBeds.quantity,
         extra_bed_rate: bookingData.extraBeds.ratePerBed,
@@ -295,7 +285,6 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         extra_bed_total: 0
       };
 
-      // Create booking
       const bookingNumber = generateBookingNumber();
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
@@ -311,7 +300,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
           room_rate: bookingData.useCustomRate && bookingData.customRoomRate ? 
             bookingData.customRoomRate : bookingData.room!.current_rate,
           original_room_rate: bookingData.room!.current_rate,
-          custom_rate_applied: bookingData.useCustomRate || false,
+          custom_rate_applied: !!bookingData.useCustomRate,
           total_nights: bookingData.totalNights!,
           ...extraBedData,
           additional_charges: bookingData.additionalCharges ? JSON.stringify(bookingData.additionalCharges) : null,
@@ -332,7 +321,6 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
       if (bookingError) throw bookingError;
 
-      // Add additional guests if any
       if (bookingData.additionalGuests && bookingData.additionalGuests.length > 0) {
         const guestInserts = bookingData.additionalGuests.map(guest => ({
           booking_id: booking.id,
@@ -346,11 +334,9 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
         if (guestsError) {
           console.error('Error adding additional guests:', guestsError);
-          // Don't fail the booking for this
         }
       }
 
-      // Create payment record if payment was made
       if (bookingData.paymentAmount && bookingData.paymentAmount > 0) {
         const { error: paymentError } = await supabase
           .from('payments')
@@ -367,11 +353,9 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
         if (paymentError) {
           console.error('Error creating payment record:', paymentError);
-          // Don't fail the booking for this
         }
       }
 
-      // Update room status if check-in is today
       const today = new Date().toISOString().split('T')[0];
       if (bookingData.checkInDate === today) {
         const { error: roomUpdateError } = await supabase
@@ -381,11 +365,9 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
 
         if (roomUpdateError) {
           console.error('Error updating room status:', roomUpdateError);
-          // Don't fail the booking for this
         }
       }
 
-      // Clear draft on successful booking
       clearDraft();
       
       toast.success('Booking created successfully!');
@@ -412,180 +394,108 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
   };
 
   const renderStepContent = () => {
-    switch (currentStepId) {
-      case 'room':
-        return (
-          <RoomSelection
-            data={bookingData}
-            onDataChange={handleStepData}
-          />
-        );
-      case 'guests':
-        return (
-          <GuestRegistration
-            data={bookingData}
-            onDataChange={handleStepData}
-          />
-        );
-      case 'payment':
-        return (
-          <PaymentProcessing
-            data={bookingData}
-            onDataChange={handleStepData}
-          />
-        );
-      case 'confirmation':
-        return (
-          <BookingConfirmation
-            data={bookingData}
-          />
-        );
-      default:
-        return null;
-    }
+    const CurrentComponent = [RoomSelection, GuestRegistration, PaymentProcessing, BookingConfirmation][currentStep];
+    return <CurrentComponent data={bookingData} onDataChange={handleStepData} />;
   };
 
   const validationMessage = getStepValidationMessage();
 
+  const variants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? '100%' : '-100%',
+      opacity: 0
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1
+    },
+    exit: (direction: number) => ({
+      zIndex: 0,
+      x: direction < 0 ? '100%' : '-100%',
+      opacity: 0
+    })
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-7xl h-[95vh] flex flex-col p-0">
-        <DialogHeader className="px-6 py-4 border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl font-bold text-gray-900">New Booking</DialogTitle>
-              <DialogDescription className="mt-1">
-                Complete the booking process step by step
-              </DialogDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              {lastSavedDraft && (
-                <div className="flex items-center gap-1 text-xs text-gray-500">
-                  <Clock className="w-3 h-3" />
-                  <span>Saved {lastSavedDraft.toLocaleTimeString()}</span>
-                </div>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={saveDraft}
-                disabled={isDraftSaving}
-                className="text-xs"
-              >
-                {isDraftSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span className='ml-1'>{isDraftSaving ? 'Saving...' : 'Save Draft'}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCancel}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
+      <DialogContent className="w-full sm:w-full md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl h-[90vh] max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="px-6 py-4 border-b relative">
+            <DialogTitle className="text-2xl font-bold text-gray-900 pr-16">New Booking</DialogTitle>
+            <DialogDescription className="mt-1">
+                Step {currentStep + 1} of {steps.length}: {steps[currentStep].title}
+            </DialogDescription>
+            <Button variant="ghost" size="icon" onClick={handleCancel} className="absolute top-3 right-3">
+                <X className="w-5 h-5" />
+            </Button>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto bg-gray-50/50">
-          <div className="p-6 space-y-6">
-            {/* Progress Steps */}
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  {steps.map((step, index) => {
-                    const IconComponent = step.icon;
-                    const isActive = index === currentStep;
-                    const isCompleted = index < currentStep;
-                    const isAccessible = isCompleted || isActive;
-                    const hasError = validationErrors[step.id] && validationErrors[step.id].length > 0;
-
-                    return (
-                      <React.Fragment key={step.id}>
-                        <div className="flex flex-col items-center space-y-2">
-                          <div
-                            className={`
-                              w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200
-                              ${isAccessible && 'cursor-pointer'}
-                              ${isActive 
-                                ? 'bg-blue-600 border-blue-600 text-white' 
-                                : isCompleted 
-                                  ? 'bg-green-600 border-green-600 text-white'
-                                  : hasError
-                                    ? 'border-red-300 text-red-600 bg-red-50'
-                                    : 'border-gray-300 text-gray-600 hover:border-blue-300'
-                              }
-                            `}
-                            onClick={() => {
-                              if (isAccessible && !loading) {
-                                setCurrentStep(index);
-                              }
-                            }}
-                          >
-                            {isCompleted ? (
-                              <CheckCircle className="w-6 h-6" />
-                            ) : hasError ? (
-                              <AlertTriangle className="w-5 h-5" />
-                            ) : (
-                              <IconComponent className="w-6 h-6" />
-                            )}
-                          </div>
-                          <div className="text-center">
-                            <p className={`text-sm font-medium ${
-                              isActive ? 'text-blue-600' : 
-                              isCompleted ? 'text-green-600' : 
-                              hasError ? 'text-red-600' :
-                              'text-gray-600'
-                            }`}>
-                              {step.title}
-                            </p>
-                            <p className="text-xs text-gray-500">{step.description}</p>
-                          </div>
-                        </div>
-                        {index < steps.length - 1 && (
-                          <div className={`flex-1 h-0.5 mx-4 ${
-                            isCompleted ? 'bg-green-600' : 'bg-gray-200'
-                          }`} />
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Error Display */}
-            {(error || validationMessage) && (
-              <Card className="border-red-200 bg-red-50">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+        <div className="flex flex-col lg:flex-row flex-1 bg-gray-50/50 overflow-hidden">
+          {/* Sidebar with Steps */}
+          <aside className="hidden lg:flex flex-col w-64 border-r bg-white p-6 overflow-y-auto">
+            <div className="space-y-6">
+              {steps.map((step, index) => {
+                const IconComponent = step.icon;
+                const isActive = index === currentStep;
+                const isCompleted = index < currentStep;
+                
+                return (
+                  <div key={step.id} className="flex items-start gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                      isActive ? 'bg-blue-600 border-blue-600 text-white' : 
+                      isCompleted ? 'bg-green-600 border-green-600 text-white' : 'border-gray-300 bg-gray-100 text-gray-500'
+                    }`}>
+                      {isCompleted ? <CheckCircle className="w-5 h-5" /> : <IconComponent className="w-5 h-5" />}
+                    </div>
                     <div>
-                      <p className="text-red-800 font-medium">
-                        {error ? 'An error occurred' : 'Please correct the following'}
-                      </p>
-                      <p className="text-red-700 mt-1">{error || validationMessage}</p>
-                      {validationErrors[currentStepId] && validationErrors[currentStepId].length > 1 && (
-                        <ul className="mt-2 text-sm text-red-600 list-disc list-inside">
-                          {validationErrors[currentStepId].slice(1).map((err, idx) => (
-                            <li key={idx}>{err}</li>
-                          ))}
-                        </ul>
-                      )}
+                      <p className={`font-semibold ${isActive ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-700'}`}>{step.title}</p>
+                      <p className="text-sm text-gray-500">{step.description}</p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Step Content */}
-            <div className="min-h-[500px]">
-              {renderStepContent()}
+                );
+              })}
             </div>
-          </div>
+            <div className="mt-auto space-y-3">
+              {hasDraft && lastSavedDraft && (
+                <div className="flex items-center gap-2 text-xs text-gray-500 p-2 bg-gray-100 rounded-md">
+                  <Clock className="w-3 h-3 flex-shrink-0" />
+                  <span>Last draft saved: {lastSavedDraft.toLocaleTimeString()}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={saveDraft} disabled={isDraftSaving} className="w-full">
+                  {isDraftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span className='ml-2'>{isDraftSaving ? 'Saving' : 'Save'}</span>
+                </Button>
+                {hasDraft && (
+                    <Button variant="destructive" size="sm" onClick={clearDraft}><Trash2 className="w-4 h-4" /></Button>
+                )}
+              </div>
+            </div>
+          </aside>
+          
+          {/* Main Content */}
+          <main className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 relative overflow-y-auto p-6">
+                <AnimatePresence initial={false} custom={direction}>
+                    <motion.div
+                        key={currentStep}
+                        custom={direction}
+                        variants={variants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        transition={{
+                            x: { type: "spring", stiffness: 300, damping: 30 },
+                            opacity: { duration: 0.2 }
+                        }}
+                        className="absolute w-full h-full top-0 left-0 p-6"
+                    >
+                        {renderStepContent()}
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+          </main>
         </div>
 
         {/* Footer Navigation */}
@@ -595,39 +505,28 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
               variant="outline"
               onClick={handleBack}
               disabled={loading}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 min-w-[120px] min-h-[48px] text-lg"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-5 h-5" />
               {isFirstStep ? 'Cancel' : 'Back'}
             </Button>
 
             <div className="flex items-center gap-4">
-              {/* Step Progress */}
-              <div className="text-sm text-gray-600">
-                Step {currentStep + 1} of {steps.length}: {steps[currentStep].title}
-              </div>
-
-              {/* Load Draft Button */}
               {isFirstStep && hasDraft && (
-                <Button
-                  variant="outline"
-                  onClick={loadDraft}
-                  disabled={loading}
-                  size="sm"
-                >
+                <Button variant="link" onClick={loadDraft} disabled={loading}>
                   <Info className="w-4 h-4 mr-2" />
                   Load Saved Draft
                 </Button>
               )}
-
               <Button
                 onClick={handleNext}
                 disabled={!canProceed() || loading}
-                className="flex items-center gap-2 min-w-[120px]"
+                className="flex items-center gap-2 min-w-[150px] min-h-[48px] text-lg"
+                size="lg"
               >
-                {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                {loading && <Loader2 className="w-5 h-5 animate-spin" />}
                 {isLastStep ? 'Create Booking' : 'Next'}
-                {!isLastStep && <ArrowRight className="w-4 h-4" />}
+                {!isLastStep && <ArrowRight className="w-5 h-5" />}
               </Button>
             </div>
           </div>
