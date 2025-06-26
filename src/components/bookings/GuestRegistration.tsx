@@ -413,7 +413,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
               setAddGuestOpen(false);
               setEditingGuest({} as Customer);
             }}
-            excludeCustomerIds={[data.primaryGuest!.id, ...(data.additionalGuests?.map(g => g.id) || [])]}
+            excludeCustomerIds={data.primaryGuest ? [data.primaryGuest.id, ...(data.additionalGuests?.map(g => g.id) || [])] : (data.additionalGuests?.map(g => g.id) || [])}
           />
         </DialogContent>
       </Dialog>
