@@ -3,7 +3,7 @@
  * Common functions for managing hotel operations, room status, and bookings
  */
 
-import { addDays, differenceInDays, format, parseISO } from 'date-fns';
+import { addDays, differenceInDays, format } from 'date-fns';
 import { Database } from '../supabase/types';
 
 // Type aliases for better readability
@@ -36,8 +36,8 @@ export function generateBookingNumber(): string {
  * @returns Number of nights
  */
 export function calculateNights(checkIn: string | Date, checkOut: string | Date): number {
-  const checkInDate = typeof checkIn === 'string' ? parseISO(checkIn) : checkIn;
-  const checkOutDate = typeof checkOut === 'string' ? parseISO(checkOut) : checkOut;
+  const checkInDate = typeof checkIn === 'string' ? new Date(checkIn) : checkIn;
+  const checkOutDate = typeof checkOut === 'string' ? new Date(checkOut) : checkOut;
   
   return differenceInDays(checkOutDate, checkInDate);
 }
@@ -70,7 +70,8 @@ export function getRoomTypeDisplay(roomType: Room['room_type']): string {
     'non-ac-2bed': 'Non-AC 2-Bed',
     'ac-3bed': 'AC 3-Bed',
     'non-ac-3bed': 'Non-AC 3-Bed',
-    'vip-ac': 'VIP AC Suite'
+    'vip-ac': 'VIP AC Suite',
+    'vip-non-ac': 'VIP Non-AC Suite'
   };
   
   return typeMap[roomType] || roomType;
@@ -85,31 +86,41 @@ export function getRoomStatusConfig(status: Room['status']) {
   const statusConfig = {
     available: {
       label: 'Available',
-      color: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-200',
+      text: 'text-emerald-800',
       icon: '✅',
       description: 'Ready for new guests'
     },
     occupied: {
       label: 'Occupied',
-      color: 'bg-red-50 border-red-200 text-red-800',
+      bg: 'bg-red-50',
+      border: 'border-red-200',
+      text: 'text-red-800',
       icon: '🏠',
       description: 'Currently occupied by guests'
     },
     cleaning: {
       label: 'Cleaning',
-      color: 'bg-amber-50 border-amber-200 text-amber-800',
+      bg: 'bg-amber-50',
+      border: 'border-amber-200',
+      text: 'text-amber-800',
       icon: '🧹',
       description: 'Being cleaned and prepared'
     },
     maintenance: {
       label: 'Maintenance',
-      color: 'bg-orange-50 border-orange-200 text-orange-800',
+      bg: 'bg-orange-50',
+      border: 'border-orange-200',
+      text: 'text-orange-800',
       icon: '🔧',
       description: 'Under maintenance or repair'
     },
     blocked: {
       label: 'Blocked',
-      color: 'bg-gray-50 border-gray-200 text-gray-800',
+      bg: 'bg-gray-50',
+      border: 'border-gray-200',
+      text: 'text-gray-800',
       icon: '🚫',
       description: 'Temporarily unavailable'
     }
@@ -151,40 +162,56 @@ export function getPaymentStatusConfig(status: Booking['payment_status']) {
 }
 
 /**
- * Get booking status display configuration
- * @param status - Booking status from database
- * @returns Status configuration with colors and labels
+ * Get booking status configuration for display
+ * @param status - Booking status
+ * @returns Status configuration with label, color, and icon
  */
-export function getBookingStatusConfig(status: Booking['booking_status']) {
-  const statusConfig = {
+export function getBookingStatusConfig(status: string) {
+  const configs = {
     confirmed: {
       label: 'Confirmed',
-      color: 'bg-blue-50 border-blue-200 text-blue-800',
-      icon: '📋'
+      color: 'bg-blue-100 text-blue-800',
+      icon: '✓',
+      description: 'Booking confirmed, awaiting check-in'
     },
     checked_in: {
       label: 'Checked In',
-      color: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-      icon: '🏨'
+      color: 'bg-green-100 text-green-800',
+      icon: '🏠',
+      description: 'Guest has checked in'
     },
     checked_out: {
       label: 'Checked Out',
-      color: 'bg-gray-50 border-gray-200 text-gray-800',
-      icon: '🚪'
+      color: 'bg-gray-100 text-gray-800',
+      icon: '✅',
+      description: 'Guest has checked out'
     },
     cancelled: {
       label: 'Cancelled',
-      color: 'bg-red-50 border-red-200 text-red-800',
-      icon: '❌'
+      color: 'bg-red-100 text-red-800',
+      icon: '❌',
+      description: 'Booking cancelled'
     },
     no_show: {
       label: 'No Show',
-      color: 'bg-orange-50 border-orange-200 text-orange-800',
-      icon: '👻'
+      color: 'bg-orange-100 text-orange-800',
+      icon: '⚠️',
+      description: 'Guest did not show up'
+    },
+    pending: {
+      label: 'Pending',
+      color: 'bg-yellow-100 text-yellow-800',
+      icon: '⏳',
+      description: 'Booking pending confirmation'
     }
   };
-  
-  return statusConfig[status] || statusConfig.confirmed;
+
+  return configs[status as keyof typeof configs] || {
+    label: status,
+    color: 'bg-gray-100 text-gray-800',
+    icon: '❓',
+    description: 'Unknown status'
+  };
 }
 
 /**
@@ -296,7 +323,7 @@ export function formatAmenities(amenities: string[] | null): string {
  * @returns True if date is in the past
  */
 export function isDateInPast(date: string | Date): boolean {
-  const checkDate = typeof date === 'string' ? parseISO(date) : date;
+  const checkDate = typeof date === 'string' ? new Date(date) : date;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
@@ -315,7 +342,8 @@ export function getNextRoomNumber(existingRooms: Room[], roomType: Room['room_ty
     'non-ac-2bed': 'N2',
     'ac-3bed': 'A3',
     'non-ac-3bed': 'N3',
-    'vip-ac': 'V'
+    'vip-ac': 'V',
+    'vip-non-ac': 'VN'
   };
   
   const prefix = typePrefix[roomType];

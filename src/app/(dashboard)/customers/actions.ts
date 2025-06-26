@@ -69,11 +69,11 @@ export async function addCustomer(formData: FormData) {
     }
   }
   
-  const { error: insertError } = await supabase.from('customers').insert({
+  const { data: insertedCustomer, error: insertError } = await supabase.from('customers').insert({
     ...validation.data,
     id_photo_urls: id_photo_urls.length > 0 ? id_photo_urls : null,
     created_by: user.id,
-  });
+  }).select().single();
 
   if (insertError) {
     console.error('DB Insert Error:', insertError);
@@ -81,7 +81,7 @@ export async function addCustomer(formData: FormData) {
   }
 
   revalidatePath('/customers');
-  return { success: true };
+  return { success: true, data: insertedCustomer };
 }
 
 export async function updateCustomer(id: string, existingPhotoUrls: string[], formData: FormData) {
@@ -126,7 +126,7 @@ export async function updateCustomer(id: string, existingPhotoUrls: string[], fo
   // Combine existing URLs with new ones
   const finalPhotoUrls = [...existingPhotoUrls, ...new_photo_urls].filter(p => p);
 
-  const { error: updateError } = await supabase
+  const { data: updatedCustomer, error: updateError } = await supabase
     .from('customers')
     .update({
       ...validation.data,
@@ -134,7 +134,9 @@ export async function updateCustomer(id: string, existingPhotoUrls: string[], fo
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select()
+    .single();
 
   if (updateError) {
     console.error('DB Update Error:', updateError);
@@ -143,7 +145,7 @@ export async function updateCustomer(id: string, existingPhotoUrls: string[], fo
 
   revalidatePath('/customers');
   revalidatePath(`/customers/${id}`);
-  return { success: true };
+  return { success: true, data: updatedCustomer };
 }
 
 export async function getSignedUrls(paths: string[]) {

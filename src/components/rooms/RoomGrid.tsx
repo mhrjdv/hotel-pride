@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { Database } from '@/lib/supabase/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Loader2, RefreshCw, ServerCrash } from 'lucide-react';
+import { RoomCard } from './RoomCard';
+import { Button } from '@/components/ui/button';
 
 // Map status to design props (bg + border + text)
 const statusStyles: Record<string, string> = {
@@ -17,70 +20,77 @@ const statusStyles: Record<string, string> = {
 type Room = Database['public']['Tables']['rooms']['Row'];
 
 export function RoomGrid() {
+  const supabase = createClient();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchRooms = async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('room_number', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching rooms:', error);
+      setError('Failed to fetch rooms. Please check your connection and try again.');
+      toast.error('Could not load room data.');
+    } else {
+      setRooms(data);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchRooms = async () => {
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*')
-        .order('room_number');
-
-      if (error) {
-        setError(error.message);
-      } else {
-        setRooms(data || []);
-      }
-      setLoading(false);
-    };
-
     fetchRooms();
+
+    const channel = supabase
+      .channel('realtime-rooms')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms' },
+        (payload) => {
+          console.log('Change received!', payload);
+          toast.info('Room status has been updated.');
+          fetchRooms(); // Refetch all rooms on any change
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   if (loading) {
     return (
-      <div className="flex justify-center py-8">
-        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+      <div className="flex flex-col items-center justify-center h-64">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+        <p className="mt-4 text-lg text-gray-600">Loading Room Status...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center text-red-600 py-8">
-        Failed to load rooms: {error}
+      <div className="flex flex-col items-center justify-center h-64 bg-red-50 text-red-700 border border-red-200 rounded-lg">
+        <ServerCrash className="w-12 h-12" />
+        <p className="mt-4 text-lg font-semibold">An Error Occurred</p>
+        <p className="mt-1">{error}</p>
+        <Button onClick={fetchRooms} className="mt-4">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Try Again
+        </Button>
       </div>
     );
   }
 
-  if (!rooms.length) {
-    return (
-      <div className="text-center py-8 text-gray-600">No rooms configured.</div>
-    );
-  }
-
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
       {rooms.map((room) => (
-        <Card key={room.id} className={`border-2 ${statusStyles[room.status] || ''}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center justify-between">
-              {room.room_number}
-              <Badge variant="outline" className="capitalize text-xs">
-                {room.room_type.replace('-', ' ')}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-gray-700">
-            <p>Status: <span className="capitalize font-medium">{room.status}</span></p>
-            <p>Rate: ₹{room.current_rate.toLocaleString('en-IN')}</p>
-            {room.allow_extra_bed && (
-              <p className="text-emerald-700 font-medium">Extra Bed Available</p>
-            )}
-          </CardContent>
-        </Card>
+        <RoomCard key={room.id} room={room} />
       ))}
     </div>
   );

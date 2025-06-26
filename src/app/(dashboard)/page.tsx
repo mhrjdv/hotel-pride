@@ -18,29 +18,29 @@ async function getStats(supabase: any) {
     .select('*', { count: 'exact', head: true })
     .gte('check_in_date', startOfTodayISO.split('T')[0])
     .lte('check_in_date', endOfTodayISO.split('T')[0])
-    .neq('status', 'cancelled');
+    .neq('booking_status', 'cancelled');
 
   const { count: todayCheckOuts, error: checkOutsError } = await supabase
     .from('bookings')
     .select('*', { count: 'exact', head: true })
     .gte('check_out_date', startOfTodayISO.split('T')[0])
     .lte('check_out_date', endOfTodayISO.split('T')[0])
-    .eq('status', 'checked_out');
+    .eq('booking_status', 'checked_out');
 
   const { data: revenueData, error: revenueError } = await supabase
-    .from('payments')
-    .select('amount')
+    .from('bookings')
+    .select('paid_amount')
     .gte('created_at', startOfTodayISO)
     .lte('created_at', endOfTodayISO)
-    .eq('payment_status', 'paid');
+    .in('payment_status', ['paid', 'partial']);
     
-  const todayRevenue = revenueData?.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0) || 0;
+  const todayRevenue = revenueData?.reduce((sum: number, p: { paid_amount: number }) => sum + p.paid_amount, 0) || 0;
   
   const { count: pendingPayments, error: pendingPaymentsError } = await supabase
     .from('bookings')
     .select('*', { count: 'exact', head: true })
     .in('payment_status', ['pending', 'partial'])
-    .neq('status', 'cancelled');
+    .neq('booking_status', 'cancelled');
 
   const errors: Record<string, any> = {};
   if (occupiedError) errors.occupiedError = occupiedError;
