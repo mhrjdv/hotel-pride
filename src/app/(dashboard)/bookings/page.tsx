@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { BookingWizard } from '@/components/bookings/BookingWizard';
+import { BookingEditor } from '@/components/bookings/BookingEditor';
 import { 
   Plus, 
   Search, 
@@ -38,6 +39,15 @@ type Booking = Database['public']['Tables']['bookings']['Row'] & {
   customers: Pick<Database['public']['Tables']['customers']['Row'], 'name' | 'phone' | 'email'> | null;
 };
 
+type FullBooking = Database['public']['Tables']['bookings']['Row'] & {
+  rooms: Database['public']['Tables']['rooms']['Row'] | null;
+  customers: Database['public']['Tables']['customers']['Row'] | null;
+  booking_guests?: {
+    customers: Database['public']['Tables']['customers']['Row'];
+    is_primary: boolean;
+  }[];
+};
+
 export default function BookingsPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -50,16 +60,10 @@ export default function BookingsPage() {
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [editingBooking, setEditingBooking] = useState<FullBooking | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
-  useEffect(() => {
-    fetchBookings();
-  }, []);
-
-  useEffect(() => {
-    filterBookings();
-  }, [bookings, searchQuery, statusFilter, dateFilter, paymentFilter]);
-
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('bookings')
@@ -84,9 +88,13 @@ export default function BookingsPage() {
       setBookings(data || []);
     }
     setLoading(false);
-  };
+  }, [supabase]);
 
-  const filterBookings = () => {
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
+
+  const filterBookings = useCallback(() => {
     let filtered = [...bookings];
 
     // Search filter
@@ -132,13 +140,24 @@ export default function BookingsPage() {
     }
 
     setFilteredBookings(filtered);
-  };
+  }, [bookings, searchQuery, statusFilter, dateFilter, paymentFilter]);
+
+  useEffect(() => {
+    filterBookings();
+  }, [filterBookings]);
 
   const handleBookingComplete = (booking: any) => {
     setShowWizard(false);
     setEditingBookingId(null);
     fetchBookings();
     toast.success(`Booking ${booking.booking_number} created successfully!`);
+  };
+
+  const handleBookingUpdate = (updatedBooking: any) => {
+    setShowEditDialog(false);
+    setEditingBooking(null);
+    fetchBookings();
+    toast.success('Booking updated successfully!');
   };
 
   const handleCheckIn = async (bookingId: string) => {
@@ -195,9 +214,27 @@ export default function BookingsPage() {
     setShowWizard(true);
   };
 
-  const handleEdit = (bookingId: string) => {
-    setEditingBookingId(bookingId);
-    setShowWizard(true);
+  const handleEdit = async (bookingId: string) => {
+    // Fetch full booking details for editing
+    const { data: fullBooking, error } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        rooms (*),
+        customers (*),
+        booking_guests (*, customers (*))
+      `)
+      .eq('id', bookingId)
+      .single();
+
+    if (error) {
+      toast.error('Failed to load booking details');
+      console.error('Error fetching booking:', error);
+      return;
+    }
+
+    setEditingBooking(fullBooking);
+    setShowEditDialog(true);
   };
 
   const handleView = (bookingId: string) => {
@@ -522,6 +559,16 @@ export default function BookingsPage() {
         onComplete={handleBookingComplete}
         onCancel={() => { setShowWizard(false); setEditingBookingId(null); }}
       />
+
+      {/* Booking Editor Dialog */}
+      {editingBooking && (
+        <BookingEditor
+          booking={editingBooking}
+          isOpen={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onUpdate={handleBookingUpdate}
+        />
+      )}
     </div>
   );
 } 

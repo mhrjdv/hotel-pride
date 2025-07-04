@@ -41,7 +41,7 @@ export function LoginForm() {
         const redirectTo = searchParams.get('redirectTo') || '/';
         router.push(redirectTo);
       }
-    } catch (error) {
+    } catch {
       toast.error('An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -56,9 +56,9 @@ export function LoginForm() {
             <Hotel className="w-6 h-6 text-white" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold">Hotel Management</CardTitle>
+            <CardTitle className="text-2xl font-bold">Hotel Pride</CardTitle>
             <CardDescription>
-              Sign in to access the hotel management system
+              Sign in to access the Hotel Pride management system
             </CardDescription>
           </div>
         </CardHeader>

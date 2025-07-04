@@ -47,7 +47,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Calculate guest statistics
-  const totalSelectedGuests = 1 + (data.additionalGuests?.length || 0);
+  const totalSelectedGuests = 1 + ((data.additionalGuests as Customer[] | undefined)?.length || 0);
   const maxGuests = data.room?.max_occupancy || 6;
   const canAddMoreGuests = totalSelectedGuests < maxGuests;
   const guestCapacityWarning = totalSelectedGuests > maxGuests;
@@ -74,16 +74,20 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
   };
 
   const handlePrimaryGuestSelect = (customer: Customer) => {
-    onDataChange({ primaryGuest: customer });
+    onDataChange({ 
+      primaryGuest: customer,
+      customerId: customer.id,
+      primaryGuestName: customer.name
+    });
     setSearchOpen(false);
     validateGuestData();
   };
 
   const handleAddAdditionalGuest = (customer: Customer) => {
-    const currentGuests = data.additionalGuests || [];
+    const currentGuests: Customer[] = (data.additionalGuests as Customer[] | undefined) || [];
     
     // Check if guest is already added
-    if (currentGuests.some(g => g.id === customer.id) || customer.id === data.primaryGuest?.id) {
+    if (currentGuests.some((g: Customer) => g.id === customer.id) || customer.id === data.primaryGuest?.id) {
       toast.error('This guest is already added to the booking');
       return;
     }
@@ -93,7 +97,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
       return;
     }
 
-    const updatedGuests = [...currentGuests, customer];
+    const updatedGuests: Customer[] = [...currentGuests, customer];
     onDataChange({ 
       additionalGuests: updatedGuests,
       totalGuests: 1 + updatedGuests.length // Primary + additional
@@ -105,7 +109,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
 
   const handleRemoveGuest = (guestId: string) => {
     if (window.confirm('Are you sure you want to remove this guest?')) {
-      const updatedGuests = (data.additionalGuests || []).filter(g => g.id !== guestId);
+      const updatedGuests: Customer[] = ((data.additionalGuests as Customer[] | undefined) || []).filter((g: Customer) => g.id !== guestId);
       onDataChange({ 
         additionalGuests: updatedGuests,
         totalGuests: 1 + updatedGuests.length // Primary + additional
@@ -301,9 +305,9 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
             </div>
           </CardHeader>
           <CardContent>
-            {data.additionalGuests && data.additionalGuests.length > 0 ? (
+            {data.additionalGuests && (data.additionalGuests as Customer[]).length > 0 ? (
               <div className="space-y-3">
-                {data.additionalGuests.map((guest) => renderGuestCard(guest, false))}
+                {(data.additionalGuests as Customer[]).map((guest: Customer) => renderGuestCard(guest, false))}
               </div>
             ) : (
               <div className="text-center py-6 text-gray-500">
@@ -354,7 +358,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
                 <p className="text-sm text-gray-600">Primary Guest</p>
               </div>
               <div className="p-3 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{data.additionalGuests?.length || 0}</p>
+                <p className="text-2xl font-bold text-green-600">{(data.additionalGuests as Customer[] | undefined)?.length || 0}</p>
                 <p className="text-sm text-gray-600">Additional Guests</p>
               </div>
               <div className={`p-3 rounded-lg ${
@@ -395,7 +399,14 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
               setSearchOpen(false);
               setEditingGuest({} as Customer);
             }}
-            excludeCustomerIds={data.primaryGuest ? [data.primaryGuest.id, ...(data.additionalGuests?.map(g => g.id) || [])] : (data.additionalGuests?.map(g => g.id) || [])}
+            excludeCustomerIds={
+              data.primaryGuest
+                ? [
+                    data.primaryGuest.id,
+                    ...(((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
+                  ]
+                : (((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
+            }
           />
         </DialogContent>
       </Dialog>
@@ -413,7 +424,14 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
               setAddGuestOpen(false);
               setEditingGuest({} as Customer);
             }}
-            excludeCustomerIds={data.primaryGuest ? [data.primaryGuest.id, ...(data.additionalGuests?.map(g => g.id) || [])] : (data.additionalGuests?.map(g => g.id) || [])}
+            excludeCustomerIds={
+              data.primaryGuest
+                ? [
+                    data.primaryGuest.id,
+                    ...(((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
+                  ]
+                : (((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
+            }
           />
         </DialogContent>
       </Dialog>

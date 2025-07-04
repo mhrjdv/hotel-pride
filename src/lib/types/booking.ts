@@ -5,31 +5,59 @@ export type Customer = Database['public']['Tables']['customers']['Row'];
 export type Booking = Database['public']['Tables']['bookings']['Row'];
 
 export interface BookingData {
-  room?: Room;
+  // Booking & Room Details
+  bookingId?: string;
+  roomId?: string;
+  roomNumber?: string;
+  roomType?: 'double-bed-deluxe' | 'vip' | 'executive-3bed';
   checkInDate?: string;
+  checkInTime?: string;
   checkOutDate?: string;
+  checkOutTime?: string;
   totalNights?: number;
-  totalGuests?: number;
+  
+  // Guest Details
+  customerId?: string;
+  primaryGuestName?: string;
   adults?: number;
   children?: number;
-  primaryGuest?: Customer;
-  additionalGuests?: Customer[];
-  roomRate?: number;
-  customRoomRate?: number;
-  useCustomRate?: boolean;
-  gstMode?: 'inclusive' | 'exclusive' | 'none';
+  totalGuests?: number;
+
+  // Pricing Details
+  rate?: number;
+  acPreference?: boolean;
+  isGstInclusive?: boolean;
+  gstRate?: number; // e.g., 0.12 for 12%
   extraBeds?: {
     quantity: number;
     ratePerBed: number;
   };
+  discount?: {
+    amount: number;
+    reason: string;
+  };
+  
+  // Payment Details
+  paymentAmount?: number;
+  
+  // Payment & Charge Details
+  useCustomRate?: boolean;
+  customRoomRate?: number;
   additionalCharges?: { description: string; amount: number }[];
+  gstMode?: 'inclusive' | 'exclusive' | 'none';
   baseAmount?: number;
-  gstAmount?: number;
-  totalAmount?: number;
   specialRequests?: string;
   paymentMethod?: 'cash' | 'card' | 'upi' | 'bank_transfer';
-  paymentAmount?: number;
   referenceNumber?: string;
-  paymentNotes?: string;
-  bookingSource?: 'walk_in' | 'phone' | 'online' | 'agent';
+  
+  // Final Calculation
+  subTotal?: number;
+  gstAmount?: number;
+  totalAmount?: number;
+  
+  // Relational Objects
+  room?: Room;
+  primaryGuest?: Customer;
+  additionalGuests?: Customer[];
+  customer?: Customer;
 } 

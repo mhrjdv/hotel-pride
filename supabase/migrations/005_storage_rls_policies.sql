@@ -21,7 +21,7 @@
 -- RLS Policies for Customer ID Storage Bucket
 -- =====================================================
 
--- This migration assumes a bucket named 'customer_ids' has been created.
+-- This migration assumes a bucket named 'hotel-pride' has been created.
 -- It's recommended to create this bucket in the Supabase Dashboard and set it to NOT be public.
 
 -- 1. Enable RLS on the storage bucket
@@ -32,7 +32,7 @@ CREATE POLICY "Allow authenticated staff to upload customer IDs"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
-  bucket_id = 'customer_ids' AND
+  bucket_id = 'hotel-pride' AND
   auth.role() = 'authenticated' AND
   (
     SELECT role
@@ -46,7 +46,7 @@ CREATE POLICY "Allow authenticated staff to view customer IDs"
 ON storage.objects FOR SELECT
 TO authenticated
 USING (
-  bucket_id = 'customer_ids' AND
+  bucket_id = 'hotel-pride' AND
   auth.role() = 'authenticated' AND
   (
     SELECT role
@@ -60,7 +60,7 @@ CREATE POLICY "Allow authenticated staff to delete customer IDs"
 ON storage.objects FOR DELETE
 TO authenticated
 USING (
-  bucket_id = 'customer_ids' AND
+  bucket_id = 'hotel-pride' AND
   auth.role() = 'authenticated' AND
   (
     SELECT role
@@ -74,7 +74,7 @@ CREATE POLICY "Allow authenticated staff to update customer IDs"
 ON storage.objects FOR UPDATE
 TO authenticated
 USING (
-  bucket_id = 'customer_ids' AND
+  bucket_id = 'hotel-pride' AND
   auth.role() = 'authenticated' AND
   (
     SELECT role

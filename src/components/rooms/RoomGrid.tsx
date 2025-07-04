@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '@/lib/supabase/types';
 import { toast } from 'sonner';
@@ -25,7 +25,7 @@ export function RoomGrid() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRooms = async () => {
+  const fetchRooms = useCallback(async () => {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase
@@ -41,7 +41,7 @@ export function RoomGrid() {
       setRooms(data);
     }
     setLoading(false);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     fetchRooms();
@@ -62,7 +62,7 @@ export function RoomGrid() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchRooms, supabase]);
 
   if (loading) {
     return (

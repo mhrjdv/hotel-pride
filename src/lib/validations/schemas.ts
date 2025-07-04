@@ -105,7 +105,7 @@ export const roomSchema = z.object({
     .max(10, 'Room number must not exceed 10 characters')
     .regex(/^[A-Z0-9]+$/, 'Room number can only contain letters and numbers'),
   
-  roomType: z.enum(['ac-2bed', 'non-ac-2bed', 'ac-3bed', 'non-ac-3bed', 'vip-ac'], {
+  roomType: z.enum(['double-bed-deluxe', 'executive-3bed', 'vip'], {
     required_error: 'Please select a room type'
   }),
   

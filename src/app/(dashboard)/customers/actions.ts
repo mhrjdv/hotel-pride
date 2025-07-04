@@ -22,7 +22,7 @@ const customerSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2),
   pin_code: z.string().regex(/^[1-9][0-9]{5}$/),
-  notes: z.string().optional(),
+  notes: z.string().optional().nullable().transform(val => val ?? undefined),
 });
 
 const BUCKET_NAME = 'hotel-pride';

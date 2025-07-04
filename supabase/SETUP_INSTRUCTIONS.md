@@ -32,7 +32,23 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 ```
 
-### Step 3: Create Admin User
+### Step 3: Setup Storage Bucket
+
+**For customer ID photo uploads:**
+
+1. **Create storage bucket:**
+   - Go to **Storage** section in Supabase Dashboard
+   - Click **New bucket**
+   - Name: `hotel-pride`
+   - Set **Public access**: OFF (Private bucket)
+   - Click **Create bucket**
+
+2. **Apply storage policies:**
+   - Back to **SQL Editor**
+   - Copy content from `supabase/migrations/005_storage_rls_policies.sql`
+   - Paste and run (this sets up secure access for hotel staff)
+
+### Step 4: Create Admin User
 
 1. **Sign up first:**
    ```bash
@@ -60,12 +76,20 @@ SELECT room_number, room_type, status FROM rooms ORDER BY room_number;
 
 -- Verify admin user
 SELECT email, full_name, role FROM profiles WHERE email = 'jadhav.mihir05@gmail.com';
+
+-- Check storage bucket exists
+SELECT name FROM storage.buckets WHERE name = 'hotel-pride';
+
+-- Verify storage policies
+SELECT policyname FROM pg_policies WHERE tablename = 'objects' AND schemaname = 'storage';
 ```
 
 **Expected results:**
 - 11 tables created
 - 18 rooms inserted
 - Admin user with role 'admin'
+- Storage bucket 'hotel-pride' exists
+- Storage RLS policies applied
 
 ## 🔑 Admin Access
 
@@ -114,6 +138,7 @@ When modifying database structure:
 Your hotel management system is ready with:
 - ✅ Complete database schema
 - ✅ Security policies (RLS)
+- ✅ Storage bucket for customer ID photos
 - ✅ 18 sample rooms
 - ✅ Admin user configured
 - ✅ Production-ready structure 

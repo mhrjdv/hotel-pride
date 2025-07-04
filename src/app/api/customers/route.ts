@@ -22,7 +22,7 @@ const customerFormSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2),
   pin_code: z.string().regex(/^[1-9][0-9]{5}$/),
-  notes: z.string().optional(),
+  notes: z.string().optional().nullable().transform(val => val ?? undefined),
 });
 
 export async function POST(request: Request) {
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       for (const photo of idPhotos) {
         const fileName = `${user.id}/${uuidv4()}-${photo.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('customer_id_photos')
+          .from('hotel-pride')
           .upload(fileName, photo);
 
         if (uploadError) {
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         {
           ...parsedData.data,
           id_photo_urls,
-          user_id: user.id,
+          created_by: user.id,
         },
       ])
       .select()
@@ -141,11 +141,15 @@ export async function PUT(request: Request) {
             for (const photo of idPhotos) {
                 const fileName = `${user.id}/${uuidv4()}-${photo.name}`;
                 const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('customer_id_photos')
+                    .from('hotel-pride')
                     .upload(fileName, photo);
 
                 if (uploadError) {
-                    return NextResponse.json({ error: 'Failed to upload photo.' }, { status: 500 });
+                    console.error('Upload Error:', uploadError);
+                    return NextResponse.json({ 
+                        error: 'Failed to upload photo.', 
+                        details: uploadError.message 
+                    }, { status: 500 });
                 }
                 newPhotoUrls.push(uploadData.path);
             }
@@ -161,7 +165,11 @@ export async function PUT(request: Request) {
             .single();
 
         if (updateError) {
-            return NextResponse.json({ error: 'Failed to update customer.' }, { status: 500 });
+            console.error('Update Error:', updateError);
+            return NextResponse.json({ 
+                error: 'Failed to update customer.', 
+                details: updateError.message 
+            }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, customer: updatedCustomer });

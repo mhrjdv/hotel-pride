@@ -16,14 +16,16 @@ import {
   MapPin,
   Receipt,
   Printer,
-  Download,
-  Share,
   Copy,
-  User,
-  IndianRupee
+  User
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { BookingData, Room, Customer } from '@/lib/types/booking';
+import { BookingData } from '@/lib/types/booking';
+import { InvoiceGenerator } from './InvoiceGenerator';
+
+interface BookingConfirmationProps {
+  data: BookingData;
+}
 
 const paymentMethodLabels = {
   cash: 'Cash',
@@ -41,16 +43,14 @@ const idTypeLabels = {
 };
 
 const roomTypeLabels = {
-  'ac-2bed': 'AC 2-Bed Room',
-  'non-ac-2bed': 'Non-AC 2-Bed Room',
-  'ac-3bed': 'AC 3-Bed Room',
-  'non-ac-3bed': 'Non-AC 3-Bed Room',
-  'vip-ac': 'VIP AC Suite',
-  'vip-non-ac': 'VIP Non-AC Suite'
+  'double-bed-deluxe': 'Double Bed Deluxe',
+  'executive-3bed': 'Executive 3-Bed',
+  'vip': 'VIP Suite'
 };
 
 export function BookingConfirmation({ data }: BookingConfirmationProps) {
   const [printing, setPrinting] = useState(false);
+  const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
 
   const totalAmount = data.totalAmount || 0;
   const paidAmount = data.paymentAmount || 0;
@@ -114,6 +114,10 @@ Payment Status: ${paymentStatus.toUpperCase()}
               <Copy className="w-4 h-4 mr-2" />
               Copy Details
             </Button>
+            <Button variant="outline" onClick={() => setShowInvoiceGenerator(true)}>
+              <Receipt className="w-4 h-4 mr-2" />
+              Generate Invoice
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -139,7 +143,7 @@ Payment Status: ${paymentStatus.toUpperCase()}
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="text-gray-600">Rate per night:</span>
-                  <p className="font-medium">₹{data.roomRate?.toLocaleString('en-IN')}</p>
+                  <p className="font-medium">₹{data.rate?.toLocaleString('en-IN')}</p>
                 </div>
                 <div>
                   <span className="text-gray-600">Max occupancy:</span>
@@ -278,11 +282,11 @@ Payment Status: ${paymentStatus.toUpperCase()}
               <h4 className="font-medium text-gray-900 mb-3">Billing Breakdown</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>Room charges ({data.totalNights} nights × ₹{data.roomRate?.toLocaleString('en-IN')})</span>
-                  <span>₹{((data.roomRate || 0) * (data.totalNights || 0)).toLocaleString('en-IN')}</span>
+                  <span>Room charges ({data.totalNights} nights × ₹{data.rate?.toLocaleString('en-IN')})</span>
+                  <span>₹{((data.rate || 0) * (data.totalNights || 0)).toLocaleString('en-IN')}</span>
                 </div>
                 
-                {data.isGstInclusive ? (
+                {data.gstMode === 'inclusive' ? (
                   <>
                     <div className="flex justify-between text-gray-600">
                       <span>Base amount (excluding GST)</span>
@@ -388,6 +392,39 @@ Payment Status: ${paymentStatus.toUpperCase()}
           </ul>
         </CardContent>
       </Card>
+
+      {/* Invoice Generator */}
+      {data.room && data.primaryGuest && (
+        <InvoiceGenerator
+          booking={{
+            booking_number: 'TMP-' + Date.now(),
+            check_in_date: data.checkInDate || '',
+            check_out_date: data.checkOutDate || '',
+            check_in_time: data.checkInTime || '14:00',
+            check_out_time: data.checkOutTime || '12:00',
+            total_nights: data.totalNights || 0,
+            total_guests: data.totalGuests || 1,
+            room_rate: data.rate || 0,
+            base_amount: data.baseAmount || 0,
+            gst_amount: data.gstAmount || 0,
+            total_amount: data.totalAmount || 0,
+            paid_amount: data.paymentAmount || 0,
+            due_amount: (data.totalAmount || 0) - (data.paymentAmount || 0),
+            gst_mode: data.gstMode || 'inclusive',
+            payment_status: (data.paymentAmount === data.totalAmount ? 'paid' : 
+                           data.paymentAmount && data.paymentAmount > 0 ? 'partial' : 'pending'),
+            extra_bed_count: data.extraBeds?.quantity || 0,
+            extra_bed_rate: data.extraBeds?.ratePerBed || 0,
+            extra_bed_total: (data.extraBeds?.quantity || 0) * (data.extraBeds?.ratePerBed || 0) * (data.totalNights || 0),
+            additional_charges: data.additionalCharges ? JSON.stringify(data.additionalCharges) : null,
+            ac_preference: data.acPreference ?? true
+          }}
+          customer={data.primaryGuest}
+          room={data.room}
+          isOpen={showInvoiceGenerator}
+          onOpenChange={setShowInvoiceGenerator}
+        />
+      )}
     </div>
   );
 } 

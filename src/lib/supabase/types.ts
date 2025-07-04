@@ -112,9 +112,12 @@ export interface Database {
         Row: {
           id: string
           room_number: string
-          room_type: 'ac-2bed' | 'non-ac-2bed' | 'ac-3bed' | 'non-ac-3bed' | 'vip-ac' | 'vip-non-ac'
+          room_type: 'double-bed-deluxe' | 'vip' | 'executive-3bed'
           base_rate: number
           current_rate: number
+          ac_rate: number | null
+          non_ac_rate: number | null
+          has_ac: boolean
           amenities: string[] | null
           status: 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'blocked'
           max_occupancy: number
@@ -125,9 +128,12 @@ export interface Database {
         Insert: {
           id?: string
           room_number: string
-          room_type: 'ac-2bed' | 'non-ac-2bed' | 'ac-3bed' | 'non-ac-3bed' | 'vip-ac' | 'vip-non-ac'
+          room_type: 'double-bed-deluxe' | 'vip' | 'executive-3bed'
           base_rate: number
           current_rate: number
+          ac_rate?: number | null
+          non_ac_rate?: number | null
+          has_ac?: boolean
           amenities?: string[] | null
           status?: 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'blocked'
           max_occupancy: number
@@ -138,9 +144,12 @@ export interface Database {
         Update: {
           id?: string
           room_number?: string
-          room_type?: 'ac-2bed' | 'non-ac-2bed' | 'ac-3bed' | 'non-ac-3bed' | 'vip-ac' | 'vip-non-ac'
+          room_type?: 'double-bed-deluxe' | 'vip' | 'executive-3bed'
           base_rate?: number
           current_rate?: number
+          ac_rate?: number | null
+          non_ac_rate?: number | null
+          has_ac?: boolean
           amenities?: string[] | null
           status?: 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'blocked'
           max_occupancy?: number
@@ -223,6 +232,8 @@ export interface Database {
           primary_customer_id: string
           check_in_date: string
           check_out_date: string
+          check_in_time: string
+          check_out_time: string
           actual_check_in: string | null
           actual_check_out: string | null
           total_guests: number
@@ -237,6 +248,13 @@ export interface Database {
           paid_amount: number
           due_amount: number
           is_gst_inclusive: boolean
+          extra_bed_count: number
+          extra_bed_rate: number
+          extra_bed_total: number
+          additional_charges: Json | null
+          custom_rate_applied: boolean
+          ac_preference: boolean
+          gst_mode: 'inclusive' | 'exclusive' | 'none'
           payment_status: 'pending' | 'partial' | 'paid' | 'refunded'
           booking_status: 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show'
           booking_source: 'walk_in' | 'phone' | 'online' | 'agent'
@@ -255,21 +273,38 @@ export interface Database {
           primary_customer_id: string
           check_in_date: string
           check_out_date: string
+          check_in_time?: string
+          check_out_time?: string
           actual_check_in?: string | null
           actual_check_out?: string | null
           total_guests?: number
+          adults?: number
+          children?: number
           room_rate: number
           total_nights: number
           base_amount: number
+          discount_amount?: number
           gst_amount: number
           total_amount: number
+          paid_amount?: number
+          due_amount?: number
           is_gst_inclusive?: boolean
+          extra_bed_count?: number
+          extra_bed_rate?: number
+          extra_bed_total?: number
+          additional_charges?: Json | null
+          custom_rate_applied?: boolean
+          gst_mode?: 'inclusive' | 'exclusive' | 'none'
           payment_status?: 'pending' | 'partial' | 'paid' | 'refunded'
           booking_status?: 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show'
+          booking_source?: 'walk_in' | 'phone' | 'online' | 'agent'
           special_requests?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
           created_at?: string
           updated_at?: string
           created_by?: string | null
+          updated_by?: string | null
         }
         Update: {
           id?: string
@@ -278,21 +313,38 @@ export interface Database {
           primary_customer_id?: string
           check_in_date?: string
           check_out_date?: string
+          check_in_time?: string
+          check_out_time?: string
           actual_check_in?: string | null
           actual_check_out?: string | null
           total_guests?: number
+          adults?: number
+          children?: number
           room_rate?: number
           total_nights?: number
           base_amount?: number
+          discount_amount?: number
           gst_amount?: number
           total_amount?: number
+          paid_amount?: number
+          due_amount?: number
           is_gst_inclusive?: boolean
+          extra_bed_count?: number
+          extra_bed_rate?: number
+          extra_bed_total?: number
+          additional_charges?: Json | null
+          custom_rate_applied?: boolean
+          gst_mode?: 'inclusive' | 'exclusive' | 'none'
           payment_status?: 'pending' | 'partial' | 'paid' | 'refunded'
           booking_status?: 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show'
+          booking_source?: 'walk_in' | 'phone' | 'online' | 'agent'
           special_requests?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
           created_at?: string
           updated_at?: string
           created_by?: string | null
+          updated_by?: string | null
         }
         Relationships: [
           {
@@ -677,7 +729,7 @@ export interface Database {
       }
     }
     Enums: {
-      room_type: 'ac-2bed' | 'non-ac-2bed' | 'ac-3bed' | 'non-ac-3bed' | 'vip-ac' | 'vip-non-ac'
+      room_type: 'double-bed-deluxe' | 'vip' | 'executive-3bed'
       room_status: 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'blocked'
       id_type: 'aadhaar' | 'pan' | 'passport' | 'driving_license' | 'voter_id'
       payment_status: 'pending' | 'partial' | 'paid' | 'refunded'

@@ -66,12 +66,9 @@ export function dateRangesOverlap(
  */
 export function getRoomTypeDisplay(roomType: Room['room_type']): string {
   const typeMap: Record<Room['room_type'], string> = {
-    'ac-2bed': 'AC 2-Bed',
-    'non-ac-2bed': 'Non-AC 2-Bed',
-    'ac-3bed': 'AC 3-Bed',
-    'non-ac-3bed': 'Non-AC 3-Bed',
-    'vip-ac': 'VIP AC Suite',
-    'vip-non-ac': 'VIP Non-AC Suite'
+    'double-bed-deluxe': 'Double Bed Deluxe',
+    'executive-3bed': 'Executive 3-Bed',
+    'vip': 'VIP Suite'
   };
   
   return typeMap[roomType] || roomType;
@@ -338,12 +335,9 @@ export function isDateInPast(date: string | Date): boolean {
  */
 export function getNextRoomNumber(existingRooms: Room[], roomType: Room['room_type']): string {
   const typePrefix: Record<Room['room_type'], string> = {
-    'ac-2bed': 'A2',
-    'non-ac-2bed': 'N2',
-    'ac-3bed': 'A3',
-    'non-ac-3bed': 'N3',
-    'vip-ac': 'V',
-    'vip-non-ac': 'VN'
+    'double-bed-deluxe': 'D',
+    'executive-3bed': 'E',
+    'vip': 'V'
   };
   
   const prefix = typePrefix[roomType];
