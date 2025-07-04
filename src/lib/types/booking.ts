@@ -39,6 +39,7 @@ export interface BookingData {
   
   // Payment Details
   paymentAmount?: number;
+  paymentNotes?: string;
   
   // Payment & Charge Details
   useCustomRate?: boolean;

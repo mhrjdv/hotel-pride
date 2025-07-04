@@ -2,10 +2,12 @@ import { createServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { DashboardClient } from './DashboardClient';
 
-async function getStats(supabase: any) {
+type SupabaseServerClient = Awaited<ReturnType<typeof createServerClient>>;
+
+async function getStats(supabase: SupabaseServerClient) {
   const today = new Date();
   const startOfTodayISO = new Date(today.setHours(0, 0, 0, 0)).toISOString();
-  const endOfTodayISO = new Date(today.setHours(23, 59, 59, 999)).toISOString();
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
 
   // Simplified and combined queries for efficiency
   const { count: occupiedRooms, error: occupiedError } = await supabase
@@ -16,51 +18,71 @@ async function getStats(supabase: any) {
   const { count: todayCheckIns, error: checkInsError } = await supabase
     .from('bookings')
     .select('*', { count: 'exact', head: true })
-    .gte('check_in_date', startOfTodayISO.split('T')[0])
-    .lte('check_in_date', endOfTodayISO.split('T')[0])
+    .eq('check_in_date', startOfTodayISO.split('T')[0])
     .neq('booking_status', 'cancelled');
 
   const { count: todayCheckOuts, error: checkOutsError } = await supabase
     .from('bookings')
     .select('*', { count: 'exact', head: true })
-    .gte('check_out_date', startOfTodayISO.split('T')[0])
-    .lte('check_out_date', endOfTodayISO.split('T')[0])
+    .eq('check_out_date', startOfTodayISO.split('T')[0])
     .eq('booking_status', 'checked_out');
 
   const { data: revenueData, error: revenueError } = await supabase
     .from('bookings')
     .select('paid_amount')
+    .gte('created_at', startOfMonth)
+    .in('payment_status', ['paid', 'partial']);
+
+  const monthRevenue = revenueData?.reduce((sum: number, p: { paid_amount: number }) => sum + p.paid_amount, 0) || 0;
+  
+  const { data: todayRevenueData, error: todayRevenueError } = await supabase
+    .from('bookings')
+    .select('paid_amount')
     .gte('created_at', startOfTodayISO)
-    .lte('created_at', endOfTodayISO)
     .in('payment_status', ['paid', 'partial']);
     
-  const todayRevenue = revenueData?.reduce((sum: number, p: { paid_amount: number }) => sum + p.paid_amount, 0) || 0;
-  
+  const todayRevenue = todayRevenueData?.reduce((sum: number, p: { paid_amount: number }) => sum + p.paid_amount, 0) || 0;
+
   const { count: pendingPayments, error: pendingPaymentsError } = await supabase
     .from('bookings')
     .select('*', { count: 'exact', head: true })
     .in('payment_status', ['pending', 'partial'])
     .neq('booking_status', 'cancelled');
 
-  const errors: Record<string, any> = {};
+  const { count: totalBookings, error: totalBookingsError } = await supabase
+    .from('bookings')
+    .select('*', { count: 'exact', head: true })
+    .neq('booking_status', 'cancelled');
+
+  const errors: Record<string, unknown> = {};
   if (occupiedError) errors.occupiedError = occupiedError;
   if (checkInsError) errors.checkInsError = checkInsError;
   if (checkOutsError) errors.checkOutsError = checkOutsError;
   if (revenueError) errors.revenueError = revenueError;
+  if (todayRevenueError) errors.todayRevenueError = todayRevenueError;
   if (pendingPaymentsError) errors.pendingPaymentsError = pendingPaymentsError;
+  if (totalBookingsError) errors.totalBookingsError = totalBookingsError;
 
   if (Object.keys(errors).length > 0) {
     console.error("Dashboard Stats Errors:", errors);
   }
 
+  const totalRooms = 18; // As per project specs
+  const occupiedCount = occupiedRooms || 0;
+
   return {
-    totalRooms: 18, // As per project specs
-    occupiedRooms: occupiedRooms || 0,
-    availableRooms: 18 - (occupiedRooms || 0),
+    totalRooms,
+    occupiedRooms: occupiedCount,
+    availableRooms: totalRooms - occupiedCount,
     todayCheckIns: todayCheckIns || 0,
     todayCheckOuts: todayCheckOuts || 0,
     todayRevenue,
     pendingPayments: pendingPayments || 0,
+    totalBookings: totalBookings || 0,
+    checkInsToday: todayCheckIns || 0,
+    checkOutsToday: todayCheckOuts || 0,
+    revenue: monthRevenue,
+    occupancyRate: totalRooms > 0 ? (occupiedCount / totalRooms) * 100 : 0,
   };
 }
 
@@ -89,7 +111,7 @@ export default async function HotelDashboardPage() {
           Welcome back, {profile?.full_name || profile?.email}!
         </h1>
         <p className="text-gray-600">
-          Here's your real-time overview of the hotel's status today.
+          Here&apos;s your real-time overview of the hotel&apos;s status today.
         </p>
       </div>
       <DashboardClient stats={stats} />

@@ -65,7 +65,7 @@ function NavContent() {
     <nav className="grid items-start gap-2 text-sm font-medium">
       {navItems.map(
         (item) =>
-          (!item.permission || hasPermission(item.permission as any)) && (
+          (!item.permission || hasPermission(item.permission as 'admin' | 'manager' | 'staff' | 'receptionist')) && (
             <NavLink key={item.href} item={item} />
           )
       )}

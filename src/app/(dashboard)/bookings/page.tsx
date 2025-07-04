@@ -7,32 +7,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { BookingWizard } from '@/components/bookings/BookingWizard';
 import { BookingEditor } from '@/components/bookings/BookingEditor';
 import { 
   Plus, 
   Search, 
-  Filter, 
   Calendar, 
-  Users, 
-  Hotel, 
-  CreditCard,
   Eye,
   Edit,
-  Trash2,
   CheckCircle,
-  Clock,
-  AlertCircle,
   RefreshCw,
-  Download,
   MoreHorizontal
 } from 'lucide-react';
 import { Database } from '@/lib/supabase/types';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { Booking as BookingType } from '@/lib/types/booking';
 
 type Booking = Database['public']['Tables']['bookings']['Row'] & {
   rooms: Pick<Database['public']['Tables']['rooms']['Row'], 'room_number' | 'room_type'> | null;
@@ -146,18 +137,18 @@ export default function BookingsPage() {
     filterBookings();
   }, [filterBookings]);
 
-  const handleBookingComplete = (booking: any) => {
+  const handleBookingComplete = (booking: BookingType) => {
     setShowWizard(false);
     setEditingBookingId(null);
     fetchBookings();
     toast.success(`Booking ${booking.booking_number} created successfully!`);
   };
 
-  const handleBookingUpdate = (updatedBooking: any) => {
+  const handleBookingUpdate = (updatedBooking: FullBooking) => {
     setShowEditDialog(false);
     setEditingBooking(null);
     fetchBookings();
-    toast.success('Booking updated successfully!');
+    toast.success(`Booking ${updatedBooking.booking_number} updated successfully!`);
   };
 
   const handleCheckIn = async (bookingId: string) => {

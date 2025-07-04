@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
+import Image from 'next/image';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogClose,
 } from '@/components/ui/dialog';
 import {
   Form,
@@ -78,7 +78,7 @@ export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSucce
   const [existingPhotos, setExistingPhotos] = useState<{path: string, url: string}[]>([]);
   const [newPhotos, setNewPhotos] = useState<{file: File, url: string}[]>([]);
   
-  const [isFetchingUrls, startUrlTransition] = useTransition();
+  const [, startUrlTransition] = useTransition();
 
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerSchema),
@@ -158,6 +158,7 @@ export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSucce
           });
           formData.append('id_photos', compressedFile);
         } catch (error) {
+          console.error('Image compression error:', error);
           toast.error(`Failed to compress image: ${photo.file.name}`);
           setIsSubmitting(false);
           return;
@@ -360,11 +361,12 @@ export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSucce
                     <p className="text-sm font-medium text-gray-700">Current Photos:</p>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                       {existingPhotos.map((photo, index) => (
-                        <div key={index} className="relative">
-                          <img
+                        <div key={index} className="relative w-28 h-28">
+                          <Image
                             src={photo.url}
-                            alt={`ID photo ${index + 1}`}
-                            className="w-full h-24 object-cover rounded border"
+                            alt={`ID Photo ${index + 1}`}
+                            fill
+                            className="object-cover w-full h-full rounded"
                           />
                           <Button
                             type="button"
@@ -387,11 +389,12 @@ export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSucce
                     <p className="text-sm font-medium text-gray-700">New Photos:</p>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                       {newPhotos.map((photo, index) => (
-                        <div key={index} className="relative">
-                          <img
+                        <div key={index} className="relative w-28 h-28">
+                          <Image
                             src={photo.url}
-                            alt={`New photo ${index + 1}`}
-                            className="w-full h-24 object-cover rounded border"
+                            alt={`Preview ${index + 1}`}
+                            fill
+                            className="object-cover w-full h-full rounded"
                           />
                           <Button
                             type="button"

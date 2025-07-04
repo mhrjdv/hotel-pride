@@ -27,7 +27,6 @@ import {
   Phone, 
   Mail, 
   MapPin, 
-  Calendar,
   CreditCard,
   UserCheck,
   UserX,
@@ -38,7 +37,6 @@ import {
 import { AddCustomerForm } from './AddCustomerForm';
 import { AddCustomerButton } from './AddCustomerButton';
 import { Database } from '@/lib/supabase/types';
-import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
 type Customer = Database['public']['Tables']['customers']['Row'];

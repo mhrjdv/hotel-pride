@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -15,23 +14,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { 
-  Save, 
-  X, 
-  Calendar, 
-  Users, 
   Hotel, 
   CreditCard, 
-  CheckCircle,
   AlertTriangle,
   Loader2,
-  RotateCcw,
-  Clock,
-  UserX,
-  Ban,
   ArrowRightLeft,
-  Eye,
   Edit3,
-  Info
+  Users,
+  Info,
 } from 'lucide-react';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
 import { calculateBookingAmount } from '@/lib/utils/gst';
@@ -57,6 +47,10 @@ interface BookingEditorProps {
   onUpdate: (updatedBooking: BookingRow) => void;
 }
 
+type BookingStatus = Database['public']['Enums']['booking_status'];
+// type PaymentStatus = Database['public']['Enums']['payment_status'];
+type GstMode = Database['public']['Tables']['bookings']['Row']['gst_mode'];
+
 // Comprehensive validation schema
 const bookingEditSchema = z.object({
   room_id: z.string().uuid('Invalid room ID'),
@@ -70,7 +64,7 @@ const bookingEditSchema = z.object({
   total_nights: z.number().min(1),
   booking_status: z.enum(['confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show']),
   payment_status: z.enum(['pending', 'partial', 'paid', 'refunded']),
-  gst_mode: z.enum(['inclusive', 'exclusive']),
+  gst_mode: z.enum(['inclusive', 'exclusive', 'none']),
   booking_source: z.enum(['walk_in', 'phone', 'online', 'agent']),
   special_requests: z.string().max(1000).optional(),
   extra_bed_count: z.number().min(0).max(4),
@@ -86,7 +80,7 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
   const [availableRooms, setAvailableRooms] = useState<Database['public']['Tables']['rooms']['Row'][]>([]);
   const [availableCustomers, setAvailableCustomers] = useState<Database['public']['Tables']['customers']['Row'][]>([]);
   const [showStatusChangeConfirm, setShowStatusChangeConfirm] = useState(false);
-  const [statusChangeDetails, setStatusChangeDetails] = useState<{from: string, to: string, message: string} | null>(null);
+  const [statusChangeDetails, setStatusChangeDetails] = useState<{from: BookingStatus, to: BookingStatus, message: string} | null>(null);
   const [isLoadingData, startLoadingTransition] = useTransition();
 
   const form = useForm<BookingEditFormData>({
@@ -101,10 +95,10 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
       children: booking.children,
       room_rate: Number(booking.room_rate),
       total_nights: booking.total_nights,
-      booking_status: booking.booking_status as any,
-      payment_status: booking.payment_status as any,
-      gst_mode: (booking.gst_mode as any) || 'inclusive',
-      booking_source: booking.booking_source as any,
+      booking_status: booking.booking_status,
+      payment_status: booking.payment_status,
+      gst_mode: booking.gst_mode || 'inclusive',
+      booking_source: booking.booking_source,
       special_requests: booking.special_requests || '',
       extra_bed_count: booking.extra_bed_count || 0,
       extra_bed_rate: Number(booking.extra_bed_rate || 0),
@@ -123,7 +117,7 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
       quantity: watchedValues.extra_bed_count,
       ratePerBed: watchedValues.extra_bed_rate
     } : undefined,
-    gstMode: watchedValues.gst_mode
+    gstMode: watchedValues.gst_mode as GstMode
   });
 
   // Load data when dialog opens
@@ -150,9 +144,9 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
         }
       });
     }
-  }, [isOpen, booking.rooms, booking.room_id]);
+  }, [isOpen, booking.rooms, booking.room_id, supabase]);
 
-  const handleStatusChange = (newStatus: string) => {
+  const handleStatusChange = (newStatus: BookingStatus) => {
     const currentStatus = watchedValues.booking_status;
     
     const statusTransitions: Record<string, Record<string, string>> = {
@@ -190,13 +184,13 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
       setStatusChangeDetails({ from: currentStatus, to: newStatus, message });
       setShowStatusChangeConfirm(true);
     } else {
-      form.setValue('booking_status', newStatus as any);
+      form.setValue('booking_status', newStatus);
     }
   };
 
   const confirmStatusChange = () => {
     if (statusChangeDetails) {
-      form.setValue('booking_status', statusChangeDetails.to as any);
+      form.setValue('booking_status', statusChangeDetails.to);
       setShowStatusChangeConfirm(false);
       setStatusChangeDetails(null);
     }
@@ -244,9 +238,10 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
       onUpdate(updated);
       onOpenChange(false);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Booking update error:', error);
-      toast.error(error.message || 'Failed to update booking');
+      const message = error instanceof Error ? error.message : 'Failed to update booking';
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

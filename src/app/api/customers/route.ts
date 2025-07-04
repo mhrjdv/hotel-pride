@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { cookies } from 'next/headers';
 
 const idTypes = [
   'aadhaar',
@@ -57,7 +56,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid form data', details: parsedData.error.flatten() }, { status: 400 });
     }
 
-    let id_photo_urls: string[] = [];
+    const id_photo_urls: string[] = [];
     if (idPhotos.length > 0) {
       for (const photo of idPhotos) {
         const fileName = `${user.id}/${uuidv4()}-${photo.name}`;
@@ -91,9 +90,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, customer: newCustomer });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('API Route Error:', error);
-    return NextResponse.json({ error: 'An unexpected error occurred.', details: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return NextResponse.json({ error: 'An unexpected error occurred.', details: message }, { status: 500 });
   }
 }
 
@@ -174,7 +174,8 @@ export async function PUT(request: Request) {
 
         return NextResponse.json({ success: true, customer: updatedCustomer });
 
-    } catch (error: any) {
-        return NextResponse.json({ error: 'An unexpected error occurred.', details: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+        return NextResponse.json({ error: 'An unexpected error occurred.', details: message }, { status: 500 });
     }
 } 

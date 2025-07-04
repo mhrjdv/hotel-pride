@@ -2,6 +2,7 @@
 
 import { useAuth, usePermissions } from '@/components/auth/AuthProvider';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,7 +26,8 @@ export function Header() {
       await signOut();
       toast.success('Signed out successfully');
       router.push('/login');
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error('Sign out error:', error);
       toast.error('Failed to sign out');
     }
   };
@@ -66,9 +68,11 @@ export function Header() {
             <Button variant="ghost" className="relative h-10 w-10 rounded-full">
               <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
                 {profile.avatar_url ? (
-                  <img
+                  <Image
                     src={profile.avatar_url}
                     alt="Avatar"
+                    width={40}
+                    height={40}
                     className="w-full h-full rounded-full object-cover"
                   />
                 ) : (

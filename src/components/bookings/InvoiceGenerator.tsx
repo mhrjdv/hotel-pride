@@ -22,7 +22,6 @@ import {
   CreditCard
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Booking, Customer, Room } from '@/lib/types/booking';
 
 interface InvoiceData {
   // Hotel Details
@@ -78,14 +77,14 @@ interface BookingType {
 interface CustomerType {
   name: string;
   phone: string;
-  email?: string;
+  email?: string | null;
   id_type: string;
   id_number: string;
-  address_line1?: string;
-  address_line2?: string;
-  city?: string;
-  state?: string;
-  pin_code?: string;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pin_code?: string | null;
 }
 
 interface RoomType {
@@ -202,6 +201,7 @@ export function InvoiceGenerator({ booking, customer, room, isOpen, onOpenChange
       // This would integrate with a PDF generation library like jsPDF or Puppeteer
       toast.info('PDF download functionality will be implemented with a PDF library');
     } catch (error) {
+      console.error('PDF Download error:', error);
       toast.error('Failed to generate PDF');
     }
   };

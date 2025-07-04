@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, ElementType } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { 
@@ -21,7 +20,7 @@ import {
   CheckCircle,
   Info
 } from 'lucide-react';
-import { calculateBookingAmount, formatBookingCalculation, GSTMode } from '@/lib/utils/gst';
+import { calculateBookingAmount, formatBookingCalculation } from '@/lib/utils/gst';
 import { toast } from 'sonner';
 import { BookingData } from '@/lib/types/booking';
 
@@ -30,7 +29,15 @@ interface PaymentProcessingProps {
   onDataChange: (data: Partial<BookingData>) => void;
 }
 
-const paymentMethods = [
+type PaymentMethod = 'cash' | 'card' | 'upi' | 'bank_transfer';
+
+const paymentMethods: {
+  value: PaymentMethod,
+  label: string,
+  icon: ElementType,
+  description: string,
+  requiresReference: boolean
+}[] = [
   { 
     value: 'cash', 
     label: 'Cash', 
@@ -61,6 +68,8 @@ const paymentMethods = [
   }
 ];
 
+type PaymentType = 'full' | 'partial' | 'advance';
+
 const gstModeLabels = {
   'inclusive': 'GST Inclusive',
   'exclusive': 'GST Exclusive', 
@@ -68,18 +77,20 @@ const gstModeLabels = {
 };
 
 export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps) {
-  const [paymentType, setPaymentType] = useState<'full' | 'partial' | 'advance'>('full');
+  const [paymentType, setPaymentType] = useState<PaymentType>('full');
   const [customAmount, setCustomAmount] = useState<string>('');
 
   // Calculate pricing breakdown using new system
-  const pricingCalculation = data.room && data.totalNights ? calculateBookingAmount({
-    baseRoomRate: data.room.current_rate,
-    customRoomRate: data.useCustomRate ? data.customRoomRate : undefined,
-    nights: data.totalNights,
-    extraBeds: data.extraBeds,
-    additionalCharges: data.additionalCharges,
-    gstMode: data.gstMode || 'inclusive'
-  }) : null;
+  const pricingCalculation = useMemo(() => {
+    return data.room && data.totalNights ? calculateBookingAmount({
+      baseRoomRate: data.room.current_rate,
+      customRoomRate: data.useCustomRate ? data.customRoomRate : undefined,
+      nights: data.totalNights,
+      extraBeds: data.extraBeds,
+      additionalCharges: data.additionalCharges,
+      gstMode: data.gstMode || 'inclusive'
+    }) : null;
+  }, [data.room, data.totalNights, data.useCustomRate, data.customRoomRate, data.extraBeds, data.additionalCharges, data.gstMode]);
 
   const formattedPricing = pricingCalculation ? formatBookingCalculation(pricingCalculation) : null;
   const totalAmount = pricingCalculation?.totalAmount || data.totalAmount || 0;
@@ -93,7 +104,7 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
         totalAmount: pricingCalculation.totalAmount
       });
     }
-  }, [pricingCalculation?.baseAmount, pricingCalculation?.gstAmount, pricingCalculation?.totalAmount]);
+  }, [onDataChange, pricingCalculation]);
 
   useEffect(() => {
     if (!data.paymentAmount && pricingCalculation) {
@@ -101,9 +112,9 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
       setPaymentType('full');
       setCustomAmount(pricingCalculation.totalAmount.toString());
     }
-  }, [pricingCalculation?.totalAmount]);
+  }, [data.paymentAmount, onDataChange, pricingCalculation]);
 
-  const handlePaymentMethodChange = (method: 'cash' | 'card' | 'upi' | 'bank_transfer') => {
+  const handlePaymentMethodChange = (method: PaymentMethod) => {
     onDataChange({ 
       paymentMethod: method,
       referenceNumber: '',
@@ -111,7 +122,7 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
     });
   };
 
-  const handlePaymentTypeChange = (type: 'full' | 'partial' | 'advance') => {
+  const handlePaymentTypeChange = (type: PaymentType) => {
     setPaymentType(type);
     
     if (type === 'full') {
@@ -283,7 +294,7 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
                   className={`cursor-pointer transition-all hover:shadow-md ${
                     isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
                   }`}
-                  onClick={() => handlePaymentMethodChange(method.value as any)}
+                  onClick={() => handlePaymentMethodChange(method.value)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -349,7 +360,7 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
                   className={`cursor-pointer transition-all hover:shadow-md ${
                     paymentType === type.value ? 'ring-2 ring-green-500 bg-green-50' : ''
                   }`}
-                  onClick={() => handlePaymentTypeChange(type.value as any)}
+                  onClick={() => handlePaymentTypeChange(type.value as PaymentType)}
                 >
                   <CardContent className="p-3">
                     <div className="text-center">

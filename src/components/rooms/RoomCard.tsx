@@ -5,19 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
-  Bed, 
-  User, 
   Wifi, 
   Tv, 
   Snowflake, 
   Wind, 
   Check, 
   X, 
-  Users, 
-  IndianRupee, 
   MoreHorizontal 
 } from 'lucide-react';
-import { getRoomStatusConfig, getRoomTypeDisplay, formatAmenities } from '@/lib/utils/hotel';
+import { getRoomStatusConfig, getRoomTypeDisplay } from '@/lib/utils/hotel';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 

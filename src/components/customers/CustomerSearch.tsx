@@ -27,7 +27,6 @@ export function CustomerSearch() {
   const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [searchType, setSearchType] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
 
   const handleSearch = (value: string) => {
     setSearchTerm(value);

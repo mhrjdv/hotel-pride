@@ -263,8 +263,8 @@ export const useLogger = (component: string) => {
     log('info', `[BOOKING_ACTION] ${action}`, { ...context, action });
   };
 
-  const apiError = (message: string, error?: any, context: Omit<LogContext, 'component'> = {}) => {
-    log('error', `[API_ERROR] ${message}`, { ...context, error: error?.message || error });
+  const apiError = (message: string, error?: unknown, context: Omit<LogContext, 'component'> = {}) => {
+    log('error', `[API_ERROR] ${message}`, { ...context, error: error instanceof Error ? error.message : String(error) });
   }
 
   return {

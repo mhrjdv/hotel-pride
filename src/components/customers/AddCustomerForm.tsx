@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
+import Image from 'next/image';
 import {
   Dialog,
   DialogContent,
@@ -153,7 +154,8 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
             useWebWorker: true,
           });
           formData.append('id_photos', compressedFile);
-        } catch (error) {
+        } catch (error: unknown) {
+          console.error('Image compression error:', error);
           toast.error(`Failed to compress image: ${photo.file.name}`);
           setIsSubmitting(false);
           return;
@@ -315,41 +317,41 @@ export function AddCustomerForm({ customer, isOpen, onOpenChange }: AddCustomerF
             <div className="md:col-span-2">
               <FormLabel>ID Photos</FormLabel>
               <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {isFetchingUrls && existingPhotos.length === 0 && <p>Loading photos...</p>}
+                {isFetchingUrls && existingPhotos.length === 0 && <p className="text-sm text-gray-500 col-span-full">Loading photos...</p>}
                 {existingPhotos.map((photo, index) => (
                   <div key={photo.path} className="relative group">
-                    <img src={photo.url} alt={`ID Photo ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
+                    <Image src={photo.url} alt={`ID Photo ${index + 1}`} width={128} height={128} className="w-full h-32 object-cover rounded-lg border" />
                     <button
                       type="button"
                       onClick={() => removeExistingPhoto(index)}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
                       aria-label="Remove photo"
                     >
-                      <X size={16} />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
                 {newPhotos.map((photo, index) => (
                   <div key={photo.url} className="relative group">
-                    <img src={photo.url} alt={`New ID Photo ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
+                    <Image src={photo.url} alt={`New ID Photo ${index + 1}`} width={128} height={128} className="w-full h-32 object-cover rounded-lg border" />
                     <button
                       type="button"
                       onClick={() => removeNewPhoto(index)}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
                       aria-label="Remove new photo"
                     >
-                      <X size={16} />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
-                <label htmlFor="id-photos-input" className="cursor-pointer w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
-                  <Upload size={32} />
-                  <span>Add Photos</span>
+                <label htmlFor="id-photos-input" className="cursor-pointer w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50 transition-colors">
+                  <Upload className="w-8 h-8 mb-2" />
+                  <span className="text-sm font-medium">Add Photos</span>
                   <input
                     id="id-photos-input"
                     type="file"
                     multiple
-                    accept="image/*"
+                    accept="image/*,.pdf"
                     className="sr-only"
                     onChange={handleFileChange}
                   />

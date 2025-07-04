@@ -13,7 +13,6 @@ import {
   ArrowRight,
   Hotel,
   AlertTriangle,
-  AlertCircle,
   Loader2,
 
   Info,
@@ -365,14 +364,11 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
   };
 
   const handleDialogOpenChange = (open: boolean) => {
-    try {
-      if (!open) {
-        handleCancel();
-      } else {
-        onOpenChange?.(open);
-      }
-    } catch (err) {
-      logError('Error handling dialog open change', err, { open });
+    if (!open) {
+      handleCancel();
+    }
+    if (onOpenChange) {
+      onOpenChange(open);
     }
   };
 
@@ -385,21 +381,10 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
     }
   }, []);
 
-  const generateBookingNumber = () => {
-    try {
-      const prefix = 'BK';
-      const timestamp = Date.now().toString().slice(-8);
-      const random = Math.random().toString(36).substr(2, 4).toUpperCase();
-      return `${prefix}${timestamp}${random}`;
-    } catch (err) {
-      logError('Error generating booking number', err);
-      return `BK${Date.now()}`;
-    }
-  };
-
   const handleBookingSubmit = async (): Promise<void> => {
-    if (!validateCurrentStep(true)) {
-      toast.error('Please fix the errors before submitting.');
+    logInfo('Starting booking submission', { bookingData });
+    if (!validateCurrentStep()) {
+      toast.error('Please fix the validation errors before proceeding.');
       return;
     }
     

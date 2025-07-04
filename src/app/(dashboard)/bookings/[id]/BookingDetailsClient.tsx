@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRouter } from 'next/navigation';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
 import { Database } from '@/lib/supabase/types';
@@ -15,7 +14,6 @@ import {
   ArrowLeft, 
   Edit3, 
   CheckCircle, 
-  Clock, 
   RotateCcw, 
   UserX, 
   Ban,
@@ -28,13 +26,9 @@ import {
   Hotel,
   CreditCard,
   FileText,
-  MoreHorizontal,
   Printer,
-  Download,
-  Eye,
   RefreshCw,
   ArrowRightLeft,
-  Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -47,6 +41,8 @@ type BookingRow = Database['public']['Tables']['bookings']['Row'] & {
   }[];
 };
 
+type BookingStatus = Database['public']['Enums']['booking_status'];
+
 interface Props {
   booking: BookingRow;
 }
@@ -57,13 +53,13 @@ export default function BookingDetailsClient({ booking: initialBooking }: Props)
   const [booking, setBooking] = useState(initialBooking);
   const [showEditor, setShowEditor] = useState(false);
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
-  const [statusChangeDetails, setStatusChangeDetails] = useState<{status: string, message: string} | null>(null);
+  const [statusChangeDetails, setStatusChangeDetails] = useState<{status: BookingStatus, message: string} | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const statusConfig = getBookingStatusConfig(booking.booking_status);
 
   // Quick status change handlers
-  const requestStatusChange = (newStatus: string, message: string) => {
+  const requestStatusChange = (newStatus: BookingStatus, message: string) => {
     setStatusChangeDetails({ status: newStatus, message });
     setShowStatusConfirm(true);
   };
@@ -76,7 +72,7 @@ export default function BookingDetailsClient({ booking: initialBooking }: Props)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const updateData: any = {
+      const updateData: Database['public']['Tables']['bookings']['Update'] = {
         booking_status: statusChangeDetails.status,
         updated_by: user.id,
         updated_at: new Date().toISOString(),
@@ -110,9 +106,13 @@ export default function BookingDetailsClient({ booking: initialBooking }: Props)
       setShowStatusConfirm(false);
       setStatusChangeDetails(null);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Status update error:', error);
-      toast.error(error.message || 'Failed to update booking status');
+      if (error instanceof Error) {
+        toast.error(error.message || 'Failed to update booking status');
+      } else {
+        toast.error('An unknown error occurred while updating status.');
+      }
     } finally {
       setIsUpdatingStatus(false);
     }

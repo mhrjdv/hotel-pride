@@ -25,16 +25,13 @@ import {
   Phone,
   Mail,
   MapPin,
-  Calendar,
   CreditCard,
   User,
   FileText,
-  Star,
   TrendingUp,
   Hotel,
   DollarSign,
   Clock,
-  AlertTriangle,
   Shield,
   Eye,
   Download,
@@ -43,9 +40,6 @@ import {
   UserCheck,
   Camera,
   ExternalLink,
-  Home,
-  Briefcase,
-  Key,
 } from 'lucide-react';
 import { Database } from '@/lib/supabase/types';
 
@@ -448,7 +442,7 @@ export function CustomerProfileClient({
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                 <Hotel className="w-12 h-12 text-gray-400 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No bookings yet</h3>
-                <p className="text-gray-500">This customer hasn't made any bookings.</p>
+                <p className="text-gray-500">This customer hasn&apos;t made any bookings.</p>
               </CardContent>
             </Card>
           )}

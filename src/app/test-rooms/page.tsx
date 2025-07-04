@@ -4,8 +4,26 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 
+type AvailableRoom = {
+  id: string;
+  room_number: string;
+  room_type: string;
+  ac_rate: number | null;
+  non_ac_rate: number | null;
+  base_rate: number;
+  current_rate: number;
+  amenities: string[] | null;
+  max_occupancy: number;
+  allow_extra_bed: boolean;
+  has_ac: boolean;
+  description: string | null;
+  images: string[] | null;
+  floor_number: number | null;
+  is_active: boolean;
+}
+
 export default function TestRoomsPage() {
-  const [rooms, setRooms] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<AvailableRoom[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const supabase = createClient();

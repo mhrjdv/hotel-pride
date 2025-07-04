@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Search, Plus, User, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Database } from '@/lib/supabase/types';
 import { toast } from 'sonner';
@@ -39,15 +39,7 @@ export function CustomerSelection({
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
-
-  useEffect(() => {
-    filterCustomers();
-  }, [customers, searchTerm, excludeCustomerIds]);
-
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('customers')
@@ -61,9 +53,9 @@ export function CustomerSelection({
       setCustomers(data || []);
     }
     setLoading(false);
-  };
+  }, [supabase]);
 
-  const filterCustomers = () => {
+  const filterCustomers = useCallback(() => {
     let filtered = customers.filter(customer => 
       !excludeCustomerIds.includes(customer.id)
     );
@@ -79,7 +71,15 @@ export function CustomerSelection({
     }
 
     setFilteredCustomers(filtered);
-  };
+  }, [customers, searchTerm, excludeCustomerIds]);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
+
+  useEffect(() => {
+    filterCustomers();
+  }, [filterCustomers]);
 
   if (loading) {
     return (

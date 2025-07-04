@@ -5,24 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Building2,
   Users,
   Calendar,
-  IndianRupee,
   Bed,
   ClipboardList,
   Plus,
   Clock,
   CreditCard,
   Hotel,
-  TrendingUp,
   DollarSign,
-  UserCheck,
-  AlertCircle
 } from 'lucide-react';
 import { RoomGrid } from '@/components/rooms/RoomGrid';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
@@ -46,6 +41,8 @@ type DashboardClientProps = {
 };
 
 export function DashboardClient({ stats }: DashboardClientProps) {
+  const [internalStats, setInternalStats] = useState<DashboardStats>(stats);
+
   const roomStatuses = [
     { type: 'available', count: stats.availableRooms, color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
     { type: 'occupied', count: stats.occupiedRooms, color: 'bg-red-50 border-red-200 text-red-800' },
@@ -55,16 +52,11 @@ export function DashboardClient({ stats }: DashboardClientProps) {
 
   const router = useRouter();
 
-  const [recentBookings, setRecentBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -111,18 +103,22 @@ export function DashboardClient({ stats }: DashboardClientProps) {
         new Date(booking.created_at) >= thisMonth
       ).reduce((sum, booking) => sum + (booking.total_amount || 0), 0) || 0;
 
-      setStats({
+      setInternalStats({
         totalRooms,
         availableRooms,
         occupiedRooms,
         totalBookings: bookings?.length || 0,
         checkInsToday,
         checkOutsToday,
+        todayCheckIns: checkInsToday,
+        todayCheckOuts: checkOutsToday,
+        todayRevenue: revenue,
+        pendingPayments: 0,
         revenue,
         occupancyRate: totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0
       });
 
-      setRecentBookings(bookings || []);
+      // setRecentBookings(bookings || []); // Currently not displayed in UI
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -130,7 +126,11 @@ export function DashboardClient({ stats }: DashboardClientProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -139,15 +139,7 @@ export function DashboardClient({ stats }: DashboardClientProps) {
     }).format(amount);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed': return 'bg-blue-100 text-blue-800';
-      case 'checked_in': return 'bg-green-100 text-green-800';
-      case 'checked_out': return 'bg-gray-100 text-gray-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  // Utility kept for potential badge coloring (unused in current UI)
 
   if (loading) {
     return (
@@ -188,7 +180,7 @@ export function DashboardClient({ stats }: DashboardClientProps) {
               <Hotel className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalRooms}</div>
+              <div className="text-2xl font-bold">{internalStats.totalRooms}</div>
             </CardContent>
           </Card>
           <Card>
@@ -197,7 +189,7 @@ export function DashboardClient({ stats }: DashboardClientProps) {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.revenue)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(internalStats.revenue)}</div>
             </CardContent>
           </Card>
           <Card>
@@ -206,7 +198,7 @@ export function DashboardClient({ stats }: DashboardClientProps) {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">+{stats.todayCheckIns}</div>
+              <div className="text-2xl font-bold">+{internalStats.todayCheckIns}</div>
             </CardContent>
           </Card>
           <Card>
@@ -215,7 +207,7 @@ export function DashboardClient({ stats }: DashboardClientProps) {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.pendingPayments}</div>
+              <div className="text-2xl font-bold">{internalStats.pendingPayments}</div>
             </CardContent>
           </Card>
         </div>
@@ -272,21 +264,21 @@ export function DashboardClient({ stats }: DashboardClientProps) {
               <div className="space-y-4">
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <h3 className="font-semibold text-blue-800 mb-2">Today&apos;s Check-ins</h3>
-                  <p className="text-2xl font-bold text-blue-600">{stats.todayCheckIns || 0}</p>
+                  <p className="text-2xl font-bold text-blue-600">{internalStats.todayCheckIns || 0}</p>
                   <p className="text-sm text-blue-600">
                     Today&apos;s check-ins and check-outs
                   </p>
                 </div>
                 <div className="p-4 bg-green-50 rounded-lg">
                   <h3 className="font-semibold text-green-800 mb-2">Today&apos;s Check-outs</h3>
-                  <p className="text-2xl font-bold text-green-600">{stats.todayCheckOuts || 0}</p>
+                  <p className="text-2xl font-bold text-green-600">{internalStats.todayCheckOuts || 0}</p>
                   <p className="text-sm text-green-600">
                     Today&apos;s check-ins and check-outs
                   </p>
                 </div>
                 <div className="p-4 bg-amber-50 rounded-lg">
                   <h3 className="font-semibold text-amber-800 mb-2">Pending Payments</h3>
-                  <p className="text-2xl font-bold text-amber-600">{stats.pendingPayments || 0}</p>
+                  <p className="text-2xl font-bold text-amber-600">{internalStats.pendingPayments || 0}</p>
                   <p className="text-sm text-amber-600">
                     Today&apos;s room availability status
                   </p>

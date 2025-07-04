@@ -20,7 +20,7 @@ export default async function CustomerProfile({ params }: Props) {
   if (!customer) return notFound();
 
   // Fetch customer's bookings
-  const { data: bookings, error: bookingsError } = await supabase
+  const { data: bookings } = await supabase
     .from('bookings')
     .select(`
       *,

@@ -86,8 +86,9 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
     setDefaultsSet(true);
   }, [defaultsSet, bookingData, onDataChange, today]);
 
+  const { checkInDate, checkInTime, checkOutDate, checkOutTime, roomType } = bookingData;
+
   const fetchAvailableRooms = useCallback(async () => {
-    const { checkInDate, checkInTime, checkOutDate, checkOutTime, roomType } = bookingData;
     if (!checkInDate || !checkInTime || !checkOutDate || !checkOutTime || !roomType) {
       setAvailableRooms([]);
       setIsLoading(false);
@@ -123,27 +124,21 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
       setIsLoading(false);
     }
   }, [
-    bookingData.checkInDate,
-    bookingData.checkInTime,
-    bookingData.checkOutDate,
-    bookingData.checkOutTime,
-    bookingData.roomType,
+    checkInDate,
+    checkInTime,
+    checkOutDate,
+    checkOutTime,
+    roomType,
+    info,
+    logError,
+    supabase,
   ]);
 
   // Trigger room fetch when relevant booking parameters change and defaults are set
   useEffect(() => {
     if (!defaultsSet) return;
     fetchAvailableRooms();
-    // We rely on explicit booking data deps to prevent logger function re-creations from causing loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    defaultsSet,
-    bookingData.checkInDate,
-    bookingData.checkInTime,
-    bookingData.checkOutDate,
-    bookingData.checkOutTime,
-    bookingData.roomType,
-  ]);
+  }, [defaultsSet, fetchAvailableRooms]);
 
   // Effect to handle clearing the selected room if it becomes unavailable
   useEffect(() => {

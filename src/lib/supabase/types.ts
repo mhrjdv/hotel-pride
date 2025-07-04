@@ -712,7 +712,7 @@ export interface Database {
     }
     Functions: {
       get_current_user_profile: {
-        Args: {}
+        Args: Record<string, never>
         Returns: {
           id: string
           email: string

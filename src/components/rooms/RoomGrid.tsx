@@ -8,14 +8,7 @@ import { Loader2, RefreshCw, ServerCrash } from 'lucide-react';
 import { RoomCard } from './RoomCard';
 import { Button } from '@/components/ui/button';
 
-// Map status to design props (bg + border + text)
-const statusStyles: Record<string, string> = {
-  available: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-  occupied: 'bg-red-50 border-red-200 text-red-800',
-  cleaning: 'bg-amber-50 border-amber-200 text-amber-800',
-  maintenance: 'bg-orange-50 border-orange-200 text-orange-800',
-  blocked: 'bg-gray-100 border-gray-300 text-gray-600',
-};
+
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 
