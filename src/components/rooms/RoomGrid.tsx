@@ -8,18 +8,22 @@ import { Loader2, RefreshCw, ServerCrash } from 'lucide-react';
 import { RoomCard } from './RoomCard';
 import { Button } from '@/components/ui/button';
 
-
-
 type Room = Database['public']['Tables']['rooms']['Row'];
 
-export function RoomGrid() {
-  const supabase = createClient();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
+interface RoomGridProps {
+  initialRooms: Room[];
+}
+
+export function RoomGrid({ initialRooms }: RoomGridProps) {
+  const [supabase] = useState(() => createClient());
+  const [rooms, setRooms] = useState<Room[]>(initialRooms);
+  const [loading, setLoading] = useState(initialRooms.length === 0);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRooms = useCallback(async () => {
-    setLoading(true);
+  const fetchRooms = useCallback(async (isRefetch = false) => {
+    if (isRefetch) {
+      setLoading(true);
+    }
     setError(null);
     const { data, error } = await supabase
       .from('rooms')
@@ -33,11 +37,17 @@ export function RoomGrid() {
     } else {
       setRooms(data);
     }
-    setLoading(false);
+    if (isRefetch) {
+      setLoading(false);
+    }
   }, [supabase]);
 
   useEffect(() => {
-    fetchRooms();
+    // If we have initial data, we don't need to fetch it again immediately.
+    // The realtime subscription will handle updates.
+    if (initialRooms.length === 0) {
+      fetchRooms(true);
+    }
 
     const channel = supabase
       .channel('realtime-rooms')
@@ -55,7 +65,7 @@ export function RoomGrid() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchRooms, supabase]);
+  }, [supabase, fetchRooms, initialRooms.length]);
 
   if (loading) {
     return (
@@ -72,7 +82,7 @@ export function RoomGrid() {
         <ServerCrash className="w-12 h-12" />
         <p className="mt-4 text-lg font-semibold">An Error Occurred</p>
         <p className="mt-1">{error}</p>
-        <Button onClick={fetchRooms} className="mt-4">
+        <Button onClick={() => fetchRooms(true)} className="mt-4">
           <RefreshCw className="w-4 h-4 mr-2" />
           Try Again
         </Button>

@@ -643,6 +643,255 @@ export interface Database {
           }
         ]
       }
+      invoices: {
+        Row: {
+          id: string
+          invoice_number: string
+          invoice_date: string
+          due_date: string | null
+          customer_id: string | null
+          customer_name: string
+          customer_email: string | null
+          customer_phone: string | null
+          customer_address: string | null
+          customer_city: string | null
+          customer_state: string | null
+          customer_pincode: string | null
+          customer_country: string | null
+          customer_gst_number: string | null
+          hotel_name: string
+          hotel_address: string
+          hotel_city: string
+          hotel_state: string
+          hotel_pincode: string
+          hotel_country: string
+          hotel_phone: string | null
+          hotel_email: string | null
+          hotel_gst_number: string | null
+          hotel_website: string | null
+          currency: string
+          exchange_rate: number | null
+          subtotal: number
+          total_tax: number
+          total_discount: number
+          total_amount: number
+          paid_amount: number
+          balance_amount: number
+          status: string
+          payment_status: string
+          notes: string | null
+          terms_and_conditions: string | null
+          booking_id: string | null
+          created_at: string
+          updated_at: string
+          created_by: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          invoice_number?: string
+          invoice_date: string
+          due_date?: string | null
+          customer_id?: string | null
+          customer_name: string
+          customer_email?: string | null
+          customer_phone?: string | null
+          customer_address?: string | null
+          customer_city?: string | null
+          customer_state?: string | null
+          customer_pincode?: string | null
+          customer_country?: string | null
+          customer_gst_number?: string | null
+          hotel_name: string
+          hotel_address: string
+          hotel_city: string
+          hotel_state: string
+          hotel_pincode: string
+          hotel_country: string
+          hotel_phone?: string | null
+          hotel_email?: string | null
+          hotel_gst_number?: string | null
+          hotel_website?: string | null
+          currency?: string
+          exchange_rate?: number | null
+          subtotal?: number
+          total_tax?: number
+          total_discount?: number
+          total_amount?: number
+          paid_amount?: number
+          balance_amount?: number
+          status?: string
+          payment_status?: string
+          notes?: string | null
+          terms_and_conditions?: string | null
+          booking_id?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          invoice_number?: string
+          invoice_date?: string
+          due_date?: string | null
+          customer_id?: string | null
+          customer_name?: string
+          customer_email?: string | null
+          customer_phone?: string | null
+          customer_address?: string | null
+          customer_city?: string | null
+          customer_state?: string | null
+          customer_pincode?: string | null
+          customer_country?: string | null
+          customer_gst_number?: string | null
+          hotel_name?: string
+          hotel_address?: string
+          hotel_city?: string
+          hotel_state?: string
+          hotel_pincode?: string
+          hotel_country?: string
+          hotel_phone?: string | null
+          hotel_email?: string | null
+          hotel_gst_number?: string | null
+          hotel_website?: string | null
+          currency?: string
+          exchange_rate?: number | null
+          subtotal?: number
+          total_tax?: number
+          total_discount?: number
+          total_amount?: number
+          paid_amount?: number
+          balance_amount?: number
+          status?: string
+          payment_status?: string
+          notes?: string | null
+          terms_and_conditions?: string | null
+          booking_id?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      invoice_line_items: {
+        Row: {
+          id: string
+          invoice_id: string
+          item_type: string
+          custom_item_type_id: string | null
+          description: string
+          quantity: number
+          unit_price: number
+          line_total: number
+          tax_rate: number
+          tax_amount: number
+          tax_inclusive: boolean
+          tax_name: string
+          discount_rate: number
+          discount_amount: number
+          is_buffet_item: boolean
+          buffet_type: string | null
+          persons_count: number
+          price_per_person: number
+          item_date: string | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          item_type: string
+          custom_item_type_id?: string | null
+          description: string
+          quantity: number
+          unit_price: number
+          line_total: number
+          tax_rate?: number
+          tax_amount?: number
+          tax_inclusive?: boolean
+          tax_name?: string
+          discount_rate?: number
+          discount_amount?: number
+          is_buffet_item?: boolean
+          buffet_type?: string | null
+          persons_count?: number
+          price_per_person?: number
+          item_date?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          item_type?: string
+          custom_item_type_id?: string | null
+          description?: string
+          quantity?: number
+          unit_price?: number
+          line_total?: number
+          tax_rate?: number
+          tax_amount?: number
+          tax_inclusive?: boolean
+          tax_name?: string
+          discount_rate?: number
+          discount_amount?: number
+          is_buffet_item?: boolean
+          buffet_type?: string | null
+          persons_count?: number
+          price_per_person?: number
+          item_date?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      invoice_payments: {
+        Row: {
+          id: string
+          invoice_id: string
+          payment_date: string
+          amount: number
+          payment_method: string
+          reference_number: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+          created_by: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          payment_date: string
+          amount: number
+          payment_method: string
+          reference_number?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          payment_date?: string
+          amount?: number
+          payment_method?: string
+          reference_number?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       room_availability: {
@@ -708,6 +957,265 @@ export interface Database {
           total_paid: number
           balance_due: number
         }
+      }
+      invoices: {
+        Row: {
+          id: string
+          invoice_number: string
+          invoice_date: string
+          due_date: string | null
+          customer_id: string | null
+          customer_name: string
+          customer_email: string | null
+          customer_phone: string | null
+          customer_address: string | null
+          customer_city: string | null
+          customer_state: string | null
+          customer_pincode: string | null
+          customer_country: string | null
+          customer_gst_number: string | null
+          hotel_name: string
+          hotel_address: string
+          hotel_city: string
+          hotel_state: string
+          hotel_pincode: string
+          hotel_country: string
+          hotel_phone: string | null
+          hotel_email: string | null
+          hotel_gst_number: string | null
+          hotel_website: string | null
+          currency: string
+          exchange_rate: number | null
+          subtotal: number
+          total_tax: number
+          total_discount: number
+          total_amount: number
+          paid_amount: number
+          balance_amount: number
+          status: string
+          payment_status: string
+          notes: string | null
+          terms_and_conditions: string | null
+          booking_id: string | null
+          created_at: string
+          updated_at: string
+          created_by: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          invoice_number: string
+          invoice_date?: string
+          due_date?: string | null
+          customer_id?: string | null
+          customer_name: string
+          customer_email?: string | null
+          customer_phone?: string | null
+          customer_address?: string | null
+          customer_city?: string | null
+          customer_state?: string | null
+          customer_pincode?: string | null
+          customer_country?: string | null
+          customer_gst_number?: string | null
+          hotel_name?: string
+          hotel_address?: string
+          hotel_city?: string
+          hotel_state?: string
+          hotel_pincode?: string
+          hotel_country?: string
+          hotel_phone?: string | null
+          hotel_email?: string | null
+          hotel_gst_number?: string | null
+          hotel_website?: string | null
+          currency?: string
+          exchange_rate?: number | null
+          subtotal?: number
+          total_tax?: number
+          total_discount?: number
+          total_amount?: number
+          paid_amount?: number
+          balance_amount?: number
+          status?: string
+          payment_status?: string
+          notes?: string | null
+          terms_and_conditions?: string | null
+          booking_id?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          invoice_number?: string
+          invoice_date?: string
+          due_date?: string | null
+          customer_id?: string | null
+          customer_name?: string
+          customer_email?: string | null
+          customer_phone?: string | null
+          customer_address?: string | null
+          customer_city?: string | null
+          customer_state?: string | null
+          customer_pincode?: string | null
+          customer_country?: string | null
+          customer_gst_number?: string | null
+          hotel_name?: string
+          hotel_address?: string
+          hotel_city?: string
+          hotel_state?: string
+          hotel_pincode?: string
+          hotel_country?: string
+          hotel_phone?: string | null
+          hotel_email?: string | null
+          hotel_gst_number?: string | null
+          hotel_website?: string | null
+          currency?: string
+          exchange_rate?: number | null
+          subtotal?: number
+          total_tax?: number
+          total_discount?: number
+          total_amount?: number
+          paid_amount?: number
+          balance_amount?: number
+          status?: string
+          payment_status?: string
+          notes?: string | null
+          terms_and_conditions?: string | null
+          booking_id?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      invoice_line_items: {
+        Row: {
+          id: string
+          invoice_id: string
+          item_type: string
+          description: string
+          quantity: number
+          unit_price: number
+          line_total: number
+          tax_rate: number | null
+          tax_amount: number | null
+          tax_inclusive: boolean | null
+          tax_name: string | null
+          discount_rate: number | null
+          discount_amount: number | null
+          item_date: string | null
+          sort_order: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          item_type?: string
+          description: string
+          quantity?: number
+          unit_price?: number
+          line_total?: number
+          tax_rate?: number | null
+          tax_amount?: number | null
+          tax_inclusive?: boolean | null
+          tax_name?: string | null
+          discount_rate?: number | null
+          discount_amount?: number | null
+          item_date?: string | null
+          sort_order?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          item_type?: string
+          description?: string
+          quantity?: number
+          unit_price?: number
+          line_total?: number
+          tax_rate?: number | null
+          tax_amount?: number | null
+          tax_inclusive?: boolean | null
+          tax_name?: string | null
+          discount_rate?: number | null
+          discount_amount?: number | null
+          item_date?: string | null
+          sort_order?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_line_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      invoice_payments: {
+        Row: {
+          id: string
+          invoice_id: string
+          payment_date: string
+          amount: number
+          payment_method: string
+          reference_number: string | null
+          notes: string | null
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          payment_date?: string
+          amount: number
+          payment_method?: string
+          reference_number?: string | null
+          notes?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          payment_date?: string
+          amount?: number
+          payment_method?: string
+          reference_number?: string | null
+          notes?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Functions: {

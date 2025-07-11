@@ -99,21 +99,30 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
     info('Fetching available rooms');
 
     try {
-      const { data, error } = await supabase.rpc('get_available_rooms', {
+      // Ensure time format includes seconds
+      const formatTime = (time: string) => time.includes(':') && time.split(':').length === 2 ? `${time}:00` : time;
+
+      const params = {
         p_check_in_date: checkInDate,
-        p_check_in_time: checkInTime,
+        p_check_in_time: formatTime(checkInTime),
         p_check_out_date: checkOutDate,
-        p_check_out_time: checkOutTime,
+        p_check_out_time: formatTime(checkOutTime),
         p_room_type: roomType,
-      });
+      };
+
+      console.log('RPC Parameters:', params);
+
+      const { data, error } = await supabase.rpc('get_available_rooms', params);
 
       if (error) {
         logError('Failed to fetch available rooms', error);
-        toast.error('Failed to fetch available rooms. Please try again.');
+        console.error('Supabase RPC Error:', error);
+        toast.error(`Failed to fetch available rooms: ${error.message}`);
         setAvailableRooms([]);
       } else {
         const fetchedRooms = data as RoomTable[];
-        info('Successfully fetched rooms');
+        info(`Successfully fetched ${fetchedRooms?.length || 0} rooms`);
+        console.log('Fetched rooms:', fetchedRooms);
         setAvailableRooms(fetchedRooms || []);
       }
     } catch (err) {
@@ -129,9 +138,9 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
     checkOutDate,
     checkOutTime,
     roomType,
+    supabase,
     info,
     logError,
-    supabase,
   ]);
 
   // Trigger room fetch when relevant booking parameters change and defaults are set
@@ -244,19 +253,16 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
 
   const handleExtraBedQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedRoom) return;
-    
+
     const quantity = parseInt(e.target.value, 10) || 0;
-    const currentTotalGuests = (bookingData.adults || 1) + (bookingData.children || 0);
-    
-    if (quantity >= 0 && (currentTotalGuests + quantity) <= selectedRoom.max_occupancy) {
+
+    if (quantity >= 0) {
       onDataChange({
         extraBeds: {
           quantity: quantity,
           ratePerBed: bookingData.extraBeds?.ratePerBed || DEFAULT_EXTRA_BED_RATE,
         },
       });
-    } else {
-      toast.warning(`Maximum occupancy for this room (${selectedRoom.max_occupancy}) exceeded.`);
     }
   };
 
@@ -560,8 +566,8 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
                     {getRoomTypeLabel(room.room_type)}
                   </p>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm">
-                      Max occupancy: {room.max_occupancy}
+                    <span className="text-sm text-gray-500">
+                      {room.room_type.replace('-', ' ').toUpperCase()}
                     </span>
                     <span className="font-semibold">
                       ₹{bookingData.acPreference ? (room.ac_rate || room.current_rate) : (room.non_ac_rate || room.current_rate)}/night
@@ -603,9 +609,6 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
                 <h3 className="font-semibold mb-2">Room {selectedRoom.room_number}</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                   {getRoomTypeLabel(selectedRoom.room_type)}
-                </p>
-                <p className="text-sm mb-2">
-                  Maximum occupancy: {selectedRoom.max_occupancy} guests
                 </p>
                 <div className="text-lg font-semibold text-blue-600">
                   ₹{bookingData.rate || 0}/night

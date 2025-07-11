@@ -3,6 +3,8 @@
  * Provides structured logging with context for development and production
  */
 
+import { useCallback } from 'react';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
@@ -249,7 +251,7 @@ export const withErrorLogging = <T extends (...args: unknown[]) => unknown>(
 
 // React hook for component-level logging
 export const useLogger = (component: string) => {
-  const log = (level: LogLevel, message: string, context?: LogContext) => {
+  const log = useCallback((level: LogLevel, message: string, context?: LogContext) => {
     const componentContext = component ? ` [${component}]` : '';
     const optionalParams = context ? [context] : [];
 
@@ -257,22 +259,27 @@ export const useLogger = (component: string) => {
       console.warn(`[${level.toUpperCase()}]${componentContext}`, message, ...optionalParams);
     }
     // In production, you would send this to a logging service like Sentry, LogRocket, etc.
-  };
+  }, [component]);
 
-  const bookingAction = (action: string, context: Omit<LogContext, 'component'> = {}) => {
+  const bookingAction = useCallback((action: string, context: Omit<LogContext, 'component'> = {}) => {
     log('info', `[BOOKING_ACTION] ${action}`, { ...context, action });
-  };
+  }, [log]);
 
-  const apiError = (message: string, error?: unknown, context: Omit<LogContext, 'component'> = {}) => {
+  const apiError = useCallback((message: string, error?: unknown, context: Omit<LogContext, 'component'> = {}) => {
     log('error', `[API_ERROR] ${message}`, { ...context, error: error instanceof Error ? error.message : String(error) });
-  }
+  }, [log]);
+
+  const debug = useCallback((message: string, context?: Omit<LogContext, 'component'>) => log('debug', message, context), [log]);
+  const info = useCallback((message: string, context?: Omit<LogContext, 'component'>) => log('info', message, context), [log]);
+  const warn = useCallback((message: string, context?: Omit<LogContext, 'component'>) => log('warn', message, context), [log]);
+  const error = useCallback((message: string, error?: unknown, context?: Omit<LogContext, 'component'>) => log('error', message, { ...context, error }), [log]);
 
   return {
-    debug: (message: string, context?: Omit<LogContext, 'component'>) => log('debug', message, context),
-    info: (message: string, context?: Omit<LogContext, 'component'>) => log('info', message, context),
-    warn: (message: string, context?: Omit<LogContext, 'component'>) => log('warn', message, context),
-    error: (message: string, error?: unknown, context?: Omit<LogContext, 'component'>) => log('error', message, { ...context, error }),
+    debug,
+    info,
+    warn,
+    error,
     bookingAction,
     apiError,
   };
-}; 
+};

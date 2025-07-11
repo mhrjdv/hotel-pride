@@ -102,7 +102,15 @@ export default async function HotelDashboardPage() {
     .eq('id', user.id)
     .single();
 
-  const stats = await getStats(supabase);
+  const [stats, { data: rooms, error: roomsError }] = await Promise.all([
+    getStats(supabase),
+    supabase.from('rooms').select('*').order('room_number', { ascending: true })
+  ]);
+
+  if (roomsError) {
+    // Handle error appropriately
+    console.error("Error fetching rooms for dashboard:", roomsError);
+  }
 
   return (
     <>
@@ -114,7 +122,7 @@ export default async function HotelDashboardPage() {
           Here&apos;s your real-time overview of the hotel&apos;s status today.
         </p>
       </div>
-      <DashboardClient stats={stats} />
+      <DashboardClient stats={stats} initialRooms={rooms || []} />
     </>
   );
 }

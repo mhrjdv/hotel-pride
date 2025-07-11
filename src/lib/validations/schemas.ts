@@ -119,10 +119,7 @@ export const roomSchema = z.object({
     .min(500, 'Current rate must be at least ₹500')
     .max(50000, 'Current rate must not exceed ₹50,000'),
   
-  maxOccupancy: z
-    .number()
-    .min(1, 'Max occupancy must be at least 1')
-    .max(6, 'Max occupancy must not exceed 6'),
+
   
   amenities: z.array(z.string()).optional().default([])
 });
@@ -154,8 +151,7 @@ export const bookingSchema = z.object({
   
   totalGuests: z
     .number()
-    .min(1, 'At least 1 guest is required')
-    .max(6, 'Maximum 6 guests allowed'),
+    .min(1, 'At least 1 guest is required'),
   
   roomRate: z
     .number()

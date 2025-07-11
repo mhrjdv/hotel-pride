@@ -17,9 +17,10 @@ import {
 } from 'lucide-react';
 import { RoomGrid } from '@/components/rooms/RoomGrid';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { toast } from 'sonner';
+import { useState } from 'react';
+import { Database } from '@/lib/supabase/types';
+
+type Room = Database['public']['Tables']['rooms']['Row'];
 
 type DashboardStats = {
   totalRooms: number;
@@ -38,10 +39,11 @@ type DashboardStats = {
 
 type DashboardClientProps = {
   stats: DashboardStats;
+  initialRooms: Room[];
 };
 
-export function DashboardClient({ stats }: DashboardClientProps) {
-  const [internalStats, setInternalStats] = useState<DashboardStats>(stats);
+export function DashboardClient({ stats, initialRooms }: DashboardClientProps) {
+  const [internalStats] = useState<DashboardStats>(stats);
 
   const roomStatuses = [
     { type: 'available', count: stats.availableRooms, color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
@@ -52,102 +54,12 @@ export function DashboardClient({ stats }: DashboardClientProps) {
 
   const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
-
-  const supabase = createClient();
-
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      // Fetch room statistics
-      const { data: rooms, error: roomsError } = await supabase
-        .from('rooms')
-        .select('status');
-
-      if (roomsError) throw roomsError;
-
-      // Count room statuses
-      const totalRooms = rooms?.length || 0;
-      const availableRooms = rooms?.filter(room => room.status === 'available').length || 0;
-      const occupiedRooms = rooms?.filter(room => room.status === 'occupied').length || 0;
-
-      // Fetch booking statistics
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('bookings')
-        .select(`
-          *,
-          customers(name),
-          rooms(room_number)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (bookingsError) throw bookingsError;
-
-      const today = new Date().toDateString();
-      const checkInsToday = bookings?.filter(booking => 
-        new Date(booking.check_in_date).toDateString() === today && 
-        booking.booking_status === 'confirmed'
-      ).length || 0;
-
-      const checkOutsToday = bookings?.filter(booking => 
-        new Date(booking.check_out_date).toDateString() === today && 
-        booking.booking_status === 'checked_in'
-      ).length || 0;
-
-      // Calculate revenue (this month)
-      const thisMonth = new Date();
-      thisMonth.setDate(1);
-      const revenue = bookings?.filter(booking => 
-        new Date(booking.created_at) >= thisMonth
-      ).reduce((sum, booking) => sum + (booking.total_amount || 0), 0) || 0;
-
-      setInternalStats({
-        totalRooms,
-        availableRooms,
-        occupiedRooms,
-        totalBookings: bookings?.length || 0,
-        checkInsToday,
-        checkOutsToday,
-        todayCheckIns: checkInsToday,
-        todayCheckOuts: checkOutsToday,
-        todayRevenue: revenue,
-        pendingPayments: 0,
-        revenue,
-        occupancyRate: totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0
-      });
-
-      // setRecentBookings(bookings || []); // Currently not displayed in UI
-
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      toast.error('Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR'
     }).format(amount);
   };
-
-  // Utility kept for potential badge coloring (unused in current UI)
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   return (
     <Tabs defaultValue="overview" className="w-full">
@@ -236,7 +148,7 @@ export function DashboardClient({ stats }: DashboardClientProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <RoomGrid />
+            <RoomGrid initialRooms={initialRooms} />
           </CardContent>
         </Card>
       </TabsContent>

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hotel Management System",
+  title: "Hotel Pride",
   description: "Comprehensive hotel management system for Indian hotels",
 };
 

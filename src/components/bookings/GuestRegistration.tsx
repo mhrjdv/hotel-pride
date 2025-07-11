@@ -48,10 +48,6 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
 
   // Calculate guest statistics
   const totalSelectedGuests = 1 + ((data.additionalGuests as Customer[] | undefined)?.length || 0);
-  const maxGuests = data.room?.max_occupancy || 6;
-  const canAddMoreGuests = totalSelectedGuests < maxGuests;
-  const guestCapacityWarning = totalSelectedGuests > maxGuests;
-  const guestCapacityNearLimit = totalSelectedGuests === maxGuests;
 
   // Validate guest data
   const validateGuestData = () => {
@@ -61,9 +57,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
       errors.push('Primary guest is required');
     }
     
-    if (totalSelectedGuests > maxGuests) {
-      errors.push(`Too many guests selected (${totalSelectedGuests}/${maxGuests})`);
-    }
+
     
     if (data.totalGuests && totalSelectedGuests > data.totalGuests) {
       errors.push(`Selected guests exceed booking capacity (${totalSelectedGuests}/${data.totalGuests})`);
@@ -92,10 +86,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
       return;
     }
 
-    if (!canAddMoreGuests) {
-      toast.error(`Cannot add more guests. Maximum capacity is ${maxGuests}`);
-      return;
-    }
+
 
     const updatedGuests: Customer[] = [...currentGuests, customer];
     onDataChange({ 
@@ -229,16 +220,7 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
         </Alert>
       )}
 
-      {/* Guest Capacity Warning */}
-      {guestCapacityWarning && (
-        <Alert className="border-amber-200 bg-amber-50">
-          <AlertCircle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-800">
-            <strong>Capacity Exceeded:</strong> You have selected {totalSelectedGuests} guests 
-            but the room only accommodates {maxGuests} guests maximum.
-          </AlertDescription>
-        </Alert>
-      )}
+
 
       {/* Primary Guest Selection */}
       <Card>
@@ -287,21 +269,19 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5" />
-                Additional Guests 
+                Additional Guests
                 <span className="text-sm font-normal text-gray-500">
-                  ({data.additionalGuests?.length || 0}/{maxGuests - 1} available)
+                  ({data.additionalGuests?.length || 0} added)
                 </span>
               </CardTitle>
-              {canAddMoreGuests && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setAddGuestOpen(true)}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Guest
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddGuestOpen(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Guest
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -313,27 +293,17 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
               <div className="text-center py-6 text-gray-500">
                 <Users className="w-8 h-8 mx-auto text-gray-400 mb-3" />
                 <p className="text-sm">No additional guests added</p>
-                {canAddMoreGuests && (
-                  <p className="text-xs mt-1">
-                    You can add up to {maxGuests - 1} more guest{maxGuests - 1 > 1 ? 's' : ''}
-                  </p>
-                )}
+                <p className="text-xs mt-1">
+                  Click &quot;Add Guest&quot; to include more guests in this booking
+                </p>
               </div>
             )}
 
-            {/* Capacity Information */}
+            {/* Guest Information */}
             <div className="mt-4 p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Room Capacity:</span>
-                <span className="font-medium">{maxGuests} guests maximum</span>
-              </div>
-              <div className="flex items-center justify-between text-sm mt-1">
-                <span className="text-gray-600">Currently Selected:</span>
-                <span className={`font-medium ${
-                  guestCapacityWarning ? 'text-red-600' : 
-                  guestCapacityNearLimit ? 'text-amber-600' : 
-                  'text-green-600'
-                }`}>
+                <span className="text-gray-600">Total Guests:</span>
+                <span className="font-medium text-blue-600">
                   {totalSelectedGuests} guest{totalSelectedGuests > 1 ? 's' : ''}
                 </span>
               </div>
@@ -361,23 +331,11 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
                 <p className="text-2xl font-bold text-green-600">{(data.additionalGuests as Customer[] | undefined)?.length || 0}</p>
                 <p className="text-sm text-gray-600">Additional Guests</p>
               </div>
-              <div className={`p-3 rounded-lg ${
-                guestCapacityWarning ? 'bg-red-50' : 
-                guestCapacityNearLimit ? 'bg-amber-50' : 
-                'bg-purple-50'
-              }`}>
-                <p className={`text-2xl font-bold ${
-                  guestCapacityWarning ? 'text-red-600' : 
-                  guestCapacityNearLimit ? 'text-amber-600' : 
-                  'text-purple-600'
-                }`}>
+              <div className="p-3 bg-purple-50 rounded-lg">
+                <p className="text-2xl font-bold text-purple-600">
                   {totalSelectedGuests}
                 </p>
-                <p className="text-sm text-gray-600">Total Selected</p>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-2xl font-bold text-gray-600">{maxGuests}</p>
-                <p className="text-sm text-gray-600">Max Allowed</p>
+                <p className="text-sm text-gray-600">Total Guests</p>
               </div>
             </div>
           </CardContent>
