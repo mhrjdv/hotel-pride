@@ -11,17 +11,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Plus, 
-  Trash2, 
-  Save, 
-  Send, 
+import {
+  Plus,
+  Trash2,
+  Save,
+  Send,
   Calculator,
   Building,
   User,
   FileText,
-  DollarSign
+  DollarSign,
+  Hotel,
+  Restaurant,
+  ConciergeBell,
+  Percent,
+  Package,
+  type IconProps,
 } from '@/components/icons';
+import type { ComponentType } from 'react';
 import { toast } from 'sonner';
 import { InvoiceFormData, InvoiceLineItemFormData, ITEM_TYPES } from '@/lib/types/invoice';
 import { calculateInvoiceTotal, formatCurrency } from '@/lib/utils/invoice-calculations';
@@ -185,9 +192,15 @@ export default function InvoiceForm({ initialData, invoiceId, mode = 'create' }:
     }
   };
 
-  const getItemTypeIcon = (type: string) => {
-    const itemType = ITEM_TYPES.find(t => t.value === type);
-    return itemType?.icon || '📋';
+  const getItemTypeIcon = (type: string): ComponentType<IconProps> => {
+    switch (type) {
+      case 'room': return Hotel;
+      case 'food': return Restaurant;
+      case 'service': return ConciergeBell;
+      case 'discount': return Percent;
+      case 'extra': return Plus;
+      default: return Package;
+    }
   };
 
   return (
@@ -434,7 +447,10 @@ export default function InvoiceForm({ initialData, invoiceId, mode = 'create' }:
               <div key={index} className="border rounded-lg p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">{getItemTypeIcon(item.item_type)}</span>
+                    {(() => {
+                      const Icon = getItemTypeIcon(item.item_type);
+                      return <Icon className="h-5 w-5 text-gray-600" aria-hidden="true" />;
+                    })()}
                     <Badge variant="outline">Item {index + 1}</Badge>
                   </div>
                   {formData.line_items.length > 1 && (
@@ -460,14 +476,17 @@ export default function InvoiceForm({ initialData, invoiceId, mode = 'create' }:
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {ITEM_TYPES.map(type => (
-                          <SelectItem key={type.value} value={type.value}>
-                            <span className="flex items-center gap-2">
-                              <span>{type.icon}</span>
-                              {type.label}
-                            </span>
-                          </SelectItem>
-                        ))}
+                        {ITEM_TYPES.map(type => {
+                          const Icon = getItemTypeIcon(type.value);
+                          return (
+                            <SelectItem key={type.value} value={type.value}>
+                              <span className="flex items-center gap-2">
+                                <Icon className="h-4 w-4" />
+                                {type.label}
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>

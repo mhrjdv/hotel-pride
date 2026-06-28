@@ -19,8 +19,18 @@ import {
   Calculator,
   User,
   FileText,
-  Settings
+  Settings,
+  Building,
+  Hotel,
+  Restaurant,
+  ConciergeBell,
+  Car,
+  WashingMachine,
+  Percent,
+  Package,
+  type IconProps,
 } from '@/components/icons';
+import type { ComponentType } from 'react';
 import { toast } from 'sonner';
 import { 
   InvoiceFormData, 
@@ -47,12 +57,59 @@ interface EnhancedInvoiceFormProps {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type BookingRow = any;
 
+/**
+ * Map an item type (basic type value OR a custom type's name/keywords) to a
+ * proper HugeIcon. We deliberately ignore the DB `icon` field (which stores raw
+ * emoji like 📋 🏨 🍽️) and render a clean line-art icon instead.
+ */
+function getItemTypeIcon(
+  itemType?: string | null,
+  customTypeName?: string | null
+): ComponentType<IconProps> {
+  switch (itemType) {
+    case 'room':
+      return Hotel;
+    case 'food':
+      return Restaurant;
+    case 'service':
+      return ConciergeBell;
+    case 'discount':
+      return Percent;
+    case 'extra':
+      return Plus;
+    case 'other':
+      return Package;
+  }
+  // Custom types: classify by name keywords.
+  const name = (customTypeName || '').toLowerCase();
+  if (/\b(room|stay|accommodation|lodging|tariff|night)\b/.test(name)) return Hotel;
+  if (/\b(food|buffet|breakfast|lunch|dinner|restaurant|meal|beverage|f&b|drink)\b/.test(name)) return Restaurant;
+  if (/\b(transport|cab|taxi|car|pickup|drop|airport|vehicle)\b/.test(name)) return Car;
+  if (/\b(laundry|dry clean|wash)\b/.test(name)) return WashingMachine;
+  if (/\b(discount|off|waiver)\b/.test(name)) return Percent;
+  if (/\b(service|concierge|spa|massage)\b/.test(name)) return ConciergeBell;
+  return Package;
+}
+
+/** Small inline icon for an item type. */
+function ItemTypeIcon({
+  itemType,
+  customTypeName,
+  className,
+}: {
+  itemType?: string | null;
+  customTypeName?: string | null;
+  className?: string;
+}) {
+  const Icon = getItemTypeIcon(itemType, customTypeName);
+  return <Icon className={className ?? 'h-4 w-4'} aria-hidden="true" />;
+}
+
 export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'create', bookingId, customerId }: EnhancedInvoiceFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [hotelConfig, setHotelConfig] = useState<HotelConfig | null>(null);
   const [customItemTypes, setCustomItemTypes] = useState<CustomItemType[]>([]);
-  const [previewMode, setPreviewMode] = useState<'split' | 'form' | 'preview'>('split');
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [linkedBookingNumber, setLinkedBookingNumber] = useState<string | null>(null);
 
@@ -462,27 +519,15 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handlePreview}>
             <Eye className="h-4 w-4 mr-2" />
-            Preview
+            Open full preview
           </Button>
-          
-          <Select value={previewMode} onValueChange={(value: string) => setPreviewMode(value as 'split' | 'form' | 'preview')}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="split">Split View</SelectItem>
-              <SelectItem value="form">Form Only</SelectItem>
-              <SelectItem value="preview">Preview Only</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className={`grid gap-6 ${previewMode === 'split' ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
-        {/* Form Section */}
-        {(previewMode === 'split' || previewMode === 'form') && (
-          <div className="space-y-6">
+      {/* Main Content: form on the left, live preview alongside (stacks on mobile) */}
+      <div className="grid gap-6 grid-cols-1 xl:grid-cols-2">
+        {/* Form Section — one clean, top-to-bottom flow */}
+        <div className="space-y-6">
             {/* Start from a booking */}
             {mode === 'create' && (
               <Card>
@@ -616,7 +661,7 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                       {CUSTOMER_TYPES.map(type => (
                         <SelectItem key={type.value} value={type.value}>
                           <span className="flex items-center gap-2">
-                            <span>{type.icon}</span>
+                            {type.value === 'company' ? <Building className="h-4 w-4" /> : <User className="h-4 w-4" />}
                             {type.label}
                           </span>
                         </SelectItem>
@@ -729,6 +774,11 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                   <div key={index} className="p-4 border rounded-lg space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
+                        <ItemTypeIcon
+                          itemType={item.custom_item_type_id ? 'custom' : item.item_type}
+                          customTypeName={customItemTypes.find(t => t.id === item.custom_item_type_id)?.name}
+                          className="h-5 w-5 text-gray-600"
+                        />
                         <h4 className="font-medium">Item {index + 1}</h4>
                         <Badge variant="outline" className="text-xs font-normal">
                           HSN/SAC: {getHsnSac({
@@ -773,37 +823,37 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                             {/* Basic Item Types */}
                             <SelectItem value="room">
                               <span className="flex items-center gap-2">
-                                <span>🏨</span>
+                                <Hotel className="h-4 w-4" />
                                 Room Charges
                               </span>
                             </SelectItem>
                             <SelectItem value="food">
                               <span className="flex items-center gap-2">
-                                <span>🍽️</span>
-                                Food & Beverage
+                                <Restaurant className="h-4 w-4" />
+                                Food &amp; Beverage
                               </span>
                             </SelectItem>
                             <SelectItem value="service">
                               <span className="flex items-center gap-2">
-                                <span>🛎️</span>
+                                <ConciergeBell className="h-4 w-4" />
                                 Service Charges
                               </span>
                             </SelectItem>
                             <SelectItem value="extra">
                               <span className="flex items-center gap-2">
-                                <span>➕</span>
+                                <Plus className="h-4 w-4" />
                                 Extra Charges
                               </span>
                             </SelectItem>
                             <SelectItem value="discount">
                               <span className="flex items-center gap-2">
-                                <span>💰</span>
+                                <Percent className="h-4 w-4" />
                                 Discount
                               </span>
                             </SelectItem>
                             <SelectItem value="other">
                               <span className="flex items-center gap-2">
-                                <span>📋</span>
+                                <Package className="h-4 w-4" />
                                 Other
                               </span>
                             </SelectItem>
@@ -817,7 +867,7 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                                 {customItemTypes.map(type => (
                                   <SelectItem key={type.id} value={type.id}>
                                     <span className="flex items-center gap-2">
-                                      <span>{type.icon}</span>
+                                      <ItemTypeIcon itemType="custom" customTypeName={type.name} className="h-4 w-4" />
                                       {type.name}
                                     </span>
                                   </SelectItem>
@@ -853,7 +903,7 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                               {BUFFET_TYPES.map(type => (
                                 <SelectItem key={type.value} value={type.value}>
                                   <span className="flex items-center gap-2">
-                                    <span>{type.icon}</span>
+                                    <Restaurant className="h-4 w-4" />
                                     {type.label}
                                   </span>
                                 </SelectItem>
@@ -1047,19 +1097,16 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                 )}
               </div>
             </div>
-          </div>
-        )}
+        </div>
 
-        {/* Live Preview Section */}
-        {(previewMode === 'split' || previewMode === 'preview') && (
-          <div className="sticky top-6">
-            <InvoiceLivePreview 
-              formData={formData} 
-              hotelConfig={hotelConfig || undefined}
-              className="max-h-[calc(100vh-8rem)] overflow-y-auto"
-            />
-          </div>
-        )}
+        {/* Live Preview — sizes to its content (the page scrolls, not an inner box).
+            Sticky on large screens so it stays in view while editing. */}
+        <div className="xl:sticky xl:top-6 xl:self-start">
+          <InvoiceLivePreview
+            formData={formData}
+            hotelConfig={hotelConfig || undefined}
+          />
+        </div>
       </div>
     </div>
   );

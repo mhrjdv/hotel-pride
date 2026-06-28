@@ -161,14 +161,12 @@ function InvoicePreviewContent() {
         </div>
       </div>
 
-      {/* Preview Content */}
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="bg-white rounded-lg shadow-sm">
-          <InvoiceLivePreview 
-            formData={formData} 
-            hotelConfig={hotelConfig || undefined}
-          />
-        </div>
+      {/* Preview Content — A4-proportioned, sizes to its content (page scrolls) */}
+      <div className="max-w-4xl mx-auto p-6 print-area">
+        <InvoiceLivePreview
+          formData={formData}
+          hotelConfig={hotelConfig || undefined}
+        />
       </div>
 
       {/* Print Styles */}

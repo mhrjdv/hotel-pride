@@ -44,7 +44,9 @@ import {
   CheckmarkCircle02Icon,
   CircleIcon,
   Clock01Icon,
+  ConciergeBellIcon,
   Copy01Icon,
+  Car01Icon,
   CreditCardIcon,
   DashboardSquare01Icon,
   Delete02Icon,
@@ -65,11 +67,13 @@ import {
   Money01Icon,
   MoreHorizontalIcon,
   Notification01Icon,
+  Package01Icon,
   PencilEdit01Icon,
   PercentIcon,
   PrinterIcon,
   ReceiptDollarIcon,
   RefreshIcon,
+  Restaurant02Icon,
   RupeeIcon,
   Search01Icon,
   SentIcon,
@@ -82,6 +86,7 @@ import {
   Tick02Icon,
   TradeUpIcon,
   Upload01Icon,
+  WashingMachineIcon,
   UserAdd01Icon,
   UserCheck01Icon,
   UserIcon,
@@ -132,6 +137,7 @@ export const Bell = makeIcon(Notification01Icon);
 export const Building = makeIcon(Building01Icon);
 export const Building2 = makeIcon(Building02Icon);
 export const Calculator = makeIcon(Calculator01Icon);
+export const Car = makeIcon(Car01Icon);
 export const Calendar = makeIcon(Calendar03Icon);
 export const CalendarCheck = makeIcon(CalendarCheckIn01Icon);
 export const CalendarX2 = makeIcon(CalendarRemove01Icon);
@@ -147,6 +153,7 @@ export const ChevronRight = makeIcon(ArrowRight01Icon);
 export const ChevronUpIcon = makeIcon(ArrowUp01Icon);
 export const Circle = makeIcon(CircleIcon);
 export const Clock = makeIcon(Clock01Icon);
+export const ConciergeBell = makeIcon(ConciergeBellIcon);
 export const Copy = makeIcon(Copy01Icon);
 export const CreditCard = makeIcon(CreditCardIcon);
 export const DollarSign = makeIcon(DollarCircleIcon);
@@ -167,6 +174,7 @@ export const LogOut = makeIcon(Logout01Icon);
 export const Mail = makeIcon(Mail01Icon);
 export const MapPin = makeIcon(Location01Icon);
 export const MoreHorizontal = makeIcon(MoreHorizontalIcon);
+export const Package = makeIcon(Package01Icon);
 export const PanelLeft = makeIcon(SidebarLeftIcon);
 export const Pencil = makeIcon(PencilEdit01Icon);
 export const Percent = makeIcon(PercentIcon);
@@ -174,6 +182,7 @@ export const Phone = makeIcon(Call02Icon);
 export const Plus = makeIcon(Add01Icon);
 export const Printer = makeIcon(PrinterIcon);
 export const Receipt = makeIcon(ReceiptDollarIcon);
+export const Restaurant = makeIcon(Restaurant02Icon);
 export const RefreshCw = makeIcon(RefreshIcon);
 export const RotateCcw = makeIcon(ArrowReloadHorizontalIcon);
 export const RotateCw = makeIcon(RefreshIcon);
@@ -194,6 +203,7 @@ export const UserPlus = makeIcon(UserAdd01Icon);
 export const UserX = makeIcon(UserRemove01Icon);
 export const Users = makeIcon(UserMultipleIcon);
 export const Wallet = makeIcon(Wallet01Icon);
+export const WashingMachine = makeIcon(WashingMachineIcon);
 export const Wind = makeIcon(WindPowerIcon);
 export const X = makeIcon(Cancel01Icon);
 export const XCircle = makeIcon(CancelCircleIcon);
