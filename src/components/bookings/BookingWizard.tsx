@@ -27,6 +27,7 @@ import { BookingConfirmation } from './BookingConfirmation';
 import { calculateBookingAmount } from '@/lib/utils/gst';
 import { toast } from 'sonner';
 import { BookingData, Booking } from '@/lib/types/booking';
+import { InvoiceFormData, InvoiceLineItemFormData } from '@/lib/types/invoice';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -384,6 +385,99 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
     }
   }, []);
 
+  // Builds an invoice payload from a freshly created booking + the wizard's
+  // bookingData and POSTs it to /api/invoices. Throws on non-OK responses so
+  // the caller can surface a non-fatal warning (the booking already exists).
+  const autoGenerateInvoice = async (booking: Booking): Promise<void> => {
+    const guest = bookingData.primaryGuest;
+    const room = bookingData.room;
+
+    const nights = booking.total_nights || bookingData.totalNights || 1;
+    const roomRate = booking.room_rate || bookingData.rate || 0;
+    const roomNumber = room?.room_number || bookingData.roomNumber || '';
+
+    // Indian hotel GST: tariff <= 7500 => 12%, otherwise 18%.
+    const gstRate = roomRate <= 7500 ? 12 : 18;
+    const gstInclusive = booking.gst_mode === 'inclusive';
+
+    const lineItems: InvoiceLineItemFormData[] = [
+      {
+        item_type: 'room',
+        description: `Room ${roomNumber} — ${nights} night${nights !== 1 ? 's' : ''}`,
+        quantity: nights,
+        unit_price: roomRate,
+        gst_rate: gstRate,
+        gst_inclusive: gstInclusive,
+        gst_name: 'GST',
+        discount_rate: 0,
+        is_buffet_item: false,
+        persons_count: 1,
+        price_per_person: 0,
+        sort_order: 0,
+      },
+    ];
+
+    const extraBedCount = booking.extra_bed_count || 0;
+    if (extraBedCount > 0) {
+      lineItems.push({
+        item_type: 'extra',
+        description: `Extra Bed × ${extraBedCount} — ${nights} night${nights !== 1 ? 's' : ''}`,
+        quantity: extraBedCount * nights,
+        unit_price: booking.extra_bed_rate || bookingData.extraBeds?.ratePerBed || 0,
+        gst_rate: gstRate,
+        gst_inclusive: gstInclusive,
+        gst_name: 'GST',
+        discount_rate: 0,
+        is_buffet_item: false,
+        persons_count: 1,
+        price_per_person: 0,
+        sort_order: 1,
+      });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const payload: InvoiceFormData = {
+      invoice_date: today,
+      invoice_type: 'invoice',
+      customer_type: 'individual',
+      customer_id: booking.primary_customer_id || bookingData.customerId || undefined,
+      customer_name: guest?.name || bookingData.primaryGuestName || 'Guest',
+      customer_email: guest?.email || undefined,
+      customer_phone: guest?.phone || undefined,
+      customer_address: [guest?.address_line1, guest?.address_line2].filter(Boolean).join(', ') || undefined,
+      customer_city: guest?.city || undefined,
+      customer_state: guest?.state || undefined,
+      customer_pincode: guest?.pin_code || undefined,
+      customer_country: guest?.country || 'India',
+      hotel_name: 'Hotel Pride',
+      hotel_address: 'Main Street, City Center',
+      hotel_city: 'Mumbai',
+      hotel_state: 'Maharashtra',
+      hotel_pincode: '400001',
+      hotel_country: 'India',
+      currency: 'INR',
+      show_bank_details: true,
+      is_email_enabled: false,
+      status: 'draft',
+      booking_id: booking.id,
+      line_items: lineItems,
+    };
+
+    const response = await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      throw new Error(detail?.error || `Invoice API returned ${response.status}`);
+    }
+
+    logInfo('Invoice auto-generated', { bookingId: booking.id, paidAmount: booking.paid_amount });
+  };
+
   const handleBookingSubmit = async (): Promise<void> => {
     logInfo('Starting booking submission', { bookingData });
     if (!validateCurrentStep()) {
@@ -418,7 +512,8 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
         check_out_date: bookingData.checkOutDate!,
         check_in_time: bookingData.checkInTime!,
         check_out_time: bookingData.checkOutTime!,
-        total_guests: bookingData.totalGuests || 1,
+        // DB CHECK (valid_guests): total_guests must equal adults + children.
+        total_guests: (bookingData.adults || 1) + (bookingData.children || 0),
         adults: bookingData.adults || 1,
         children: bookingData.children || 0,
         room_rate: bookingData.rate!,
@@ -464,6 +559,16 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
       toast.success('Booking Confirmed!', {
         description: `Booking #${data.booking_number} has been created.`
       });
+
+      // Auto-generate an invoice for the new booking. The booking is already
+      // created, so any failure here must NOT fail the booking flow.
+      try {
+        await autoGenerateInvoice(data as Booking);
+      } catch (invoiceErr) {
+        logError('Failed to auto-generate invoice', invoiceErr);
+        toast.warning('Booking created, but the invoice could not be generated automatically. You can create it manually.');
+      }
+
       clearDraft();
       if (onComplete) {
         onComplete(data as Booking);

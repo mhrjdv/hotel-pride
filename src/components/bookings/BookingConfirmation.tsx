@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -8,13 +7,11 @@ import {
   Users,
   Hotel,
   Receipt,
-  Printer,
   Copy,
   User,
 } from '@/components/icons';
 import { toast } from 'sonner';
 import { BookingData } from '@/lib/types/booking';
-import { InvoiceGenerator } from './InvoiceGenerator';
 
 interface BookingConfirmationProps {
   data: BookingData;
@@ -45,8 +42,6 @@ const formatDate = (value?: string) =>
   value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
 
 export function BookingConfirmation({ data }: BookingConfirmationProps) {
-  const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
-
   const totalAmount = data.totalAmount || 0;
   const paidAmount = data.paymentAmount || 0;
   const dueAmount = totalAmount - paidAmount;
@@ -212,56 +207,11 @@ Payment Status: ${paymentStatus.toUpperCase()}
 
       {/* Secondary actions */}
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => window.print()}>
-          <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Print
-        </Button>
         <Button variant="outline" size="sm" onClick={handleCopyDetails}>
           <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" />
           Copy Details
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setShowInvoiceGenerator(true)}>
-          <Receipt className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Generate Invoice
-        </Button>
       </div>
-
-      {/* Invoice Generator */}
-      {data.room && data.primaryGuest && (
-        <InvoiceGenerator
-          booking={{
-            booking_number: 'TMP-' + Date.now(),
-            check_in_date: data.checkInDate || '',
-            check_out_date: data.checkOutDate || '',
-            check_in_time: data.checkInTime || '14:00',
-            check_out_time: data.checkOutTime || '12:00',
-            total_nights: data.totalNights || 0,
-            total_guests: data.totalGuests || 1,
-            room_rate: data.rate || 0,
-            base_amount: data.baseAmount || 0,
-            gst_amount: data.gstAmount || 0,
-            total_amount: data.totalAmount || 0,
-            paid_amount: data.paymentAmount || 0,
-            due_amount: (data.totalAmount || 0) - (data.paymentAmount || 0),
-            gst_mode: data.gstMode || 'inclusive',
-            payment_status:
-              data.paymentAmount === data.totalAmount
-                ? 'paid'
-                : data.paymentAmount && data.paymentAmount > 0
-                  ? 'partial'
-                  : 'pending',
-            extra_bed_count: data.extraBeds?.quantity || 0,
-            extra_bed_rate: data.extraBeds?.ratePerBed || 0,
-            extra_bed_total: (data.extraBeds?.quantity || 0) * (data.extraBeds?.ratePerBed || 0) * (data.totalNights || 0),
-            additional_charges: data.additionalCharges ? JSON.stringify(data.additionalCharges) : null,
-            ac_preference: data.acPreference ?? true,
-          }}
-          customer={data.primaryGuest}
-          room={data.room}
-          isOpen={showInvoiceGenerator}
-          onOpenChange={setShowInvoiceGenerator}
-        />
-      )}
     </div>
   );
 }
