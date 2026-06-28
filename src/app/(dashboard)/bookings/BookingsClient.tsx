@@ -16,16 +16,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { BookingWizard } from '@/components/bookings/BookingWizard';
 import { BookingEditor } from '@/components/bookings/BookingEditor';
-import { 
-  Plus, 
-  Search, 
-  Calendar, 
+import {
+  Plus,
+  Search,
+  Calendar,
   Eye,
   Edit,
   CheckCircle,
   RefreshCw,
   RotateCcw,
-  MoreHorizontal
+  MoreHorizontal,
+  ChevronUpIcon,
+  ChevronDown
 } from '@/components/icons';
 import { Database } from '@/lib/supabase/types';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
@@ -51,6 +53,9 @@ interface BookingsClientProps {
   initialBookings: Booking[];
 }
 
+type SortColumn = 'created' | 'booking_number' | 'guest' | 'room' | 'check_in' | 'amount' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export function BookingsClient({ initialBookings }: BookingsClientProps) {
   const supabase = createClient();
   const router = useRouter();
@@ -63,6 +68,10 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<SortColumn>('created');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<FullBooking | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -157,11 +166,11 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
       filtered = filtered.filter(booking => booking.payment_status === paymentFilter);
     }
 
-    // Date filter
+    // Date quick filter
     if (dateFilter !== 'all') {
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
-      
+
       filtered = filtered.filter(booking => {
         switch (dateFilter) {
           case 'today':
@@ -178,8 +187,60 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
       });
     }
 
+    // Date-range filter on check-in date
+    if (dateFrom) {
+      filtered = filtered.filter(booking => booking.check_in_date >= dateFrom);
+    }
+    if (dateTo) {
+      filtered = filtered.filter(booking => booking.check_in_date <= dateTo);
+    }
+
+    // Sorting
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    const compare = (a: Booking, b: Booking): number => {
+      switch (sortColumn) {
+        case 'booking_number':
+          return a.booking_number.localeCompare(b.booking_number) * dir;
+        case 'guest':
+          return (a.customers?.name ?? '').localeCompare(b.customers?.name ?? '') * dir;
+        case 'room':
+          return (a.rooms?.room_number ?? '').localeCompare(b.rooms?.room_number ?? '', undefined, { numeric: true }) * dir;
+        case 'check_in':
+          return (new Date(a.check_in_date).getTime() - new Date(b.check_in_date).getTime()) * dir;
+        case 'amount':
+          return (a.total_amount - b.total_amount) * dir;
+        case 'status':
+          return a.booking_status.localeCompare(b.booking_status) * dir;
+        case 'created':
+        default:
+          return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
+      }
+    };
+    filtered.sort(compare);
+
     setFilteredBookings(filtered);
-  }, [bookings, searchQuery, statusFilter, dateFilter, paymentFilter]);
+  }, [bookings, searchQuery, statusFilter, dateFilter, paymentFilter, dateFrom, dateTo, sortColumn, sortDirection]);
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortIndicator = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ChevronDown className="w-3.5 h-3.5 text-gray-300" aria-hidden="true" />;
+    }
+    return sortDirection === 'asc'
+      ? <ChevronUpIcon className="w-3.5 h-3.5 text-gray-700" aria-hidden="true" />
+      : <ChevronDown className="w-3.5 h-3.5 text-gray-700" aria-hidden="true" />;
+  };
+
+  const ariaSort = (column: SortColumn): 'ascending' | 'descending' | 'none' =>
+    sortColumn === column ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none';
 
   useEffect(() => {
     filterBookings();
@@ -428,6 +489,43 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                 <SelectItem value="past">Past</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Check-in date range */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="booking-date-from" className="text-sm text-gray-600 whitespace-nowrap">
+                Check-in from
+              </label>
+              <Input
+                id="booking-date-from"
+                type="date"
+                aria-label="Check-in date from"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-[150px]"
+              />
+              <label htmlFor="booking-date-to" className="text-sm text-gray-600 whitespace-nowrap">
+                to
+              </label>
+              <Input
+                id="booking-date-to"
+                type="date"
+                aria-label="Check-in date to"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-[150px]"
+              />
+              {(dateFrom || dateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setDateFrom(''); setDateTo(''); }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -499,18 +597,18 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                   
                   return (
                     <Card key={booking.id} className="border-l-4 border-l-blue-500">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-3">
+                      <CardContent className="p-3">
+                        <div className="flex items-start justify-between mb-2">
                           <div>
-                            <h3 className="font-semibold text-lg">{booking.booking_number}</h3>
-                            <p className="text-gray-600">{booking.customers?.name}</p>
+                            <h3 className="font-semibold text-base">{booking.booking_number}</h3>
+                            <p className="text-sm text-gray-600">{booking.customers?.name}</p>
                           </div>
                           <Badge className={statusConfig.color}>
                             {statusConfig.icon} {statusConfig.label}
                           </Badge>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs mb-2">
                           <div>
                             <p className="text-gray-600">Room</p>
                             <p className="font-medium">{booking.rooms?.room_number}</p>
@@ -597,14 +695,38 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left p-3 font-medium">Booking #</th>
-                        <th className="text-left p-3 font-medium">Guest</th>
-                        <th className="text-left p-3 font-medium">Room</th>
-                        <th className="text-left p-3 font-medium">Dates</th>
-                        <th className="text-left p-3 font-medium">Amount</th>
-                        <th className="text-left p-3 font-medium">Status</th>
-                        <th className="text-left p-3 font-medium">Payment</th>
-                        <th className="text-left p-3 font-medium">Actions</th>
+                        <th aria-sort={ariaSort('booking_number')} className="text-left p-2 text-sm font-medium">
+                          <button type="button" onClick={() => handleSort('booking_number')} className="inline-flex items-center gap-1 hover:text-gray-900">
+                            Booking # {sortIndicator('booking_number')}
+                          </button>
+                        </th>
+                        <th aria-sort={ariaSort('guest')} className="text-left p-2 text-sm font-medium">
+                          <button type="button" onClick={() => handleSort('guest')} className="inline-flex items-center gap-1 hover:text-gray-900">
+                            Guest {sortIndicator('guest')}
+                          </button>
+                        </th>
+                        <th aria-sort={ariaSort('room')} className="text-left p-2 text-sm font-medium">
+                          <button type="button" onClick={() => handleSort('room')} className="inline-flex items-center gap-1 hover:text-gray-900">
+                            Room {sortIndicator('room')}
+                          </button>
+                        </th>
+                        <th aria-sort={ariaSort('check_in')} className="text-left p-2 text-sm font-medium">
+                          <button type="button" onClick={() => handleSort('check_in')} className="inline-flex items-center gap-1 hover:text-gray-900">
+                            Dates {sortIndicator('check_in')}
+                          </button>
+                        </th>
+                        <th aria-sort={ariaSort('amount')} className="text-left p-2 text-sm font-medium">
+                          <button type="button" onClick={() => handleSort('amount')} className="inline-flex items-center gap-1 hover:text-gray-900">
+                            Amount {sortIndicator('amount')}
+                          </button>
+                        </th>
+                        <th aria-sort={ariaSort('status')} className="text-left p-2 text-sm font-medium">
+                          <button type="button" onClick={() => handleSort('status')} className="inline-flex items-center gap-1 hover:text-gray-900">
+                            Status {sortIndicator('status')}
+                          </button>
+                        </th>
+                        <th className="text-left p-2 text-sm font-medium">Payment</th>
+                        <th className="text-left p-2 text-sm font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -616,50 +738,50 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                         
                         return (
                           <tr key={booking.id} className="border-b hover:bg-gray-50">
-                            <td className="p-3">
+                            <td className="p-2">
                               <div>
-                                <p className="font-medium">{booking.booking_number}</p>
-                                <p className="text-sm text-gray-500">
+                                <p className="font-medium text-sm">{booking.booking_number}</p>
+                                <p className="text-xs text-gray-500">
                                   {new Date(booking.created_at).toLocaleDateString('en-IN')}
                                 </p>
                               </div>
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <div>
-                                <p className="font-medium">{booking.customers?.name}</p>
-                                <p className="text-sm text-gray-500">{booking.customers?.phone}</p>
+                                <p className="font-medium text-sm">{booking.customers?.name}</p>
+                                <p className="text-xs text-gray-500">{booking.customers?.phone}</p>
                               </div>
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <div>
-                                <p className="font-medium">{booking.rooms?.room_number}</p>
-                                <p className="text-sm text-gray-500 capitalize">
+                                <p className="font-medium text-sm">{booking.rooms?.room_number}</p>
+                                <p className="text-xs text-gray-500 capitalize">
                                   {booking.rooms?.room_type?.replace('-', ' ')}
                                 </p>
                               </div>
                             </td>
-                            <td className="p-3">
-                              <div className="text-sm">
+                            <td className="p-2">
+                              <div className="text-xs">
                                 <p>{new Date(booking.check_in_date).toLocaleDateString('en-IN')}</p>
                                 <p className="text-gray-500">to {new Date(booking.check_out_date).toLocaleDateString('en-IN')}</p>
                                 <p className="text-gray-500">{booking.total_nights} nights</p>
                               </div>
                             </td>
-                            <td className="p-3">
-                              <div className="text-sm">
+                            <td className="p-2">
+                              <div className="text-xs">
                                 <p className="font-medium">₹{booking.total_amount.toLocaleString('en-IN')}</p>
                                 <p className="text-gray-500">
                                   Paid: ₹{booking.paid_amount.toLocaleString('en-IN')}
                                 </p>
                               </div>
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <Badge className={statusConfig.color}>
                                 {statusConfig.icon} {statusConfig.label}
                               </Badge>
                             </td>
-                            <td className="p-3">
-                              <Badge 
+                            <td className="p-2">
+                              <Badge
                                 variant={
                                   booking.payment_status === 'paid' ? 'default' :
                                   booking.payment_status === 'partial' ? 'secondary' :
@@ -669,7 +791,7 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                                 {booking.payment_status}
                               </Badge>
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <div className="flex items-center gap-1">
                                 {canCheckIn && (
                                   <Button size="sm" aria-label="Check in" onClick={() => handleCheckIn(booking.id)}>

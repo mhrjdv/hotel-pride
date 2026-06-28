@@ -1,76 +1,62 @@
 'use client';
 
 import { Database } from '@/lib/supabase/types';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Pencil, Snowflake, Users, Plus } from '@/components/icons';
+import { TableCell, TableRow } from '@/components/ui/table';
+import { Pencil, Snowflake, Users } from '@/components/icons';
 import { getRoomStatusConfig, getRoomTypeDisplay } from '@/lib/utils/hotel';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 
-interface RoomCardProps {
+interface RoomRowProps {
   room: Room;
-  onEdit?: (room: Room) => void;
-  onSelect?: (room: Room) => void;
+  onEdit: (room: Room) => void;
 }
 
-export function RoomCard({ room, onEdit, onSelect }: RoomCardProps) {
+/**
+ * A single room rendered as a compact table row.
+ */
+export function RoomRow({ room, onEdit }: RoomRowProps) {
   const status = getRoomStatusConfig(room.status);
-  const isAvailable = room.status === 'available';
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-lg font-semibold leading-tight">Room {room.room_number}</p>
-            <p className="text-sm text-muted-foreground">{getRoomTypeDisplay(room.room_type)}</p>
-          </div>
-          <Badge className={`${status.bg} ${status.text} border ${status.border}`}>{status.label}</Badge>
-        </div>
-
-        <div className="mt-3 flex items-baseline gap-1">
-          <span className="text-xl font-bold">₹{room.current_rate.toLocaleString('en-IN')}</span>
-          <span className="text-sm text-muted-foreground">/ night</span>
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Users className="h-4 w-4" /> Max {room.max_occupancy}
+    <TableRow>
+      <TableCell className="font-medium">{room.room_number}</TableCell>
+      <TableCell className="text-muted-foreground">{getRoomTypeDisplay(room.room_type)}</TableCell>
+      <TableCell>
+        {room.has_ac ? (
+          <span className="inline-flex items-center gap-1 text-sky-700">
+            <Snowflake className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Air conditioned</span>
+            AC
           </span>
-          {room.has_ac && (
-            <span className="flex items-center gap-1">
-              <Snowflake className="h-4 w-4" /> AC
-            </span>
-          )}
-          {room.allow_extra_bed && <span>Extra bed</span>}
-        </div>
-
-        <div className="mt-4 flex gap-2">
-          {onEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => onEdit(room)}
-              aria-label={`Edit room ${room.room_number}`}
-            >
-              <Pencil className="mr-1.5 h-4 w-4" /> Edit
-            </Button>
-          )}
-          {onSelect && isAvailable && (
-            <Button
-              size="sm"
-              className="flex-1"
-              onClick={() => onSelect(room)}
-              aria-label={`Book room ${room.room_number}`}
-            >
-              <Plus className="mr-1.5 h-4 w-4" /> Book
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        ) : (
+          <span className="text-muted-foreground">Non-AC</span>
+        )}
+      </TableCell>
+      <TableCell className="tabular-nums">₹{room.current_rate.toLocaleString('en-IN')}</TableCell>
+      <TableCell>
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <Users className="h-4 w-4" aria-hidden="true" />
+          {room.max_occupancy}
+        </span>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{room.allow_extra_bed ? 'Yes' : 'No'}</TableCell>
+      <TableCell>
+        <Badge className={`${status.bg} ${status.text} border ${status.border}`}>{status.label}</Badge>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => onEdit(room)}
+          aria-label={`Edit room ${room.room_number}`}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }

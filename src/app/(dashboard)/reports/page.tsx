@@ -24,6 +24,7 @@ import {
   AlertCircle,
   FileText,
   ChevronDown,
+  Settings,
 } from '@/components/icons';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,8 @@ type Booking = {
   booking_status: string;
   booking_source: string;
   created_at: string;
+  ac_preference?: boolean | string | null;
+  is_gst_inclusive?: boolean | null;
   rooms?: { room_number: string; room_type: string; has_ac: boolean } | null;
   customers?: { name: string; phone: string; email?: string } | null;
 };
@@ -116,6 +119,52 @@ function getPeriodRange(period: Period): { start: string; end: string; label: st
       break;
   }
   return { start: start.toISOString(), end: end.toISOString(), label };
+}
+
+// ─── Custom report option sets ────────────────────────────────────────────────
+
+const ROOM_TYPE_OPTIONS = [
+  { value: 'double-bed-deluxe', label: 'Double Bed Deluxe' },
+  { value: 'executive-3bed', label: 'Executive 3-Bed' },
+  { value: 'vip', label: 'VIP Suite' },
+] as const;
+
+const BOOKING_STATUS_OPTIONS = [
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'checked_in', label: 'Checked In' },
+  { value: 'checked_out', label: 'Checked Out' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'no_show', label: 'No Show' },
+] as const;
+
+const PAYMENT_STATUS_OPTIONS = [
+  { value: 'paid', label: 'Paid' },
+  { value: 'partial', label: 'Partial' },
+  { value: 'pending', label: 'Pending' },
+] as const;
+
+type AcFilter = 'all' | 'ac' | 'non_ac';
+type GstFilter = 'all' | 'gst' | 'no_gst';
+
+const ROOM_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  ROOM_TYPE_OPTIONS.map((o) => [o.value, o.label])
+);
+const STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  BOOKING_STATUS_OPTIONS.map((o) => [o.value, o.label])
+);
+
+/** Resolve whether a booking is AC: prefer joined room flag, fall back to booking pref. */
+function bookingIsAc(b: Booking): boolean {
+  if (b.rooms && typeof b.rooms.has_ac === 'boolean') return b.rooms.has_ac;
+  const pref = b.ac_preference;
+  if (typeof pref === 'boolean') return pref;
+  if (typeof pref === 'string') return pref.toLowerCase() === 'ac' || pref.toLowerCase() === 'true';
+  return false;
+}
+
+/** Resolve whether GST was applied to a booking. */
+function bookingHasGst(b: Booking): boolean {
+  return b.is_gst_inclusive === true || (b.gst_amount || 0) > 0;
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -345,6 +394,23 @@ export default function ReportsPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
 
+  // ── Custom report builder state ─────────────────────────────────────────────
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const monthAgoStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [crFrom, setCrFrom] = useState(monthAgoStr);
+  const [crTo, setCrTo] = useState(todayStr);
+  const [crIncludeBookings, setCrIncludeBookings] = useState(true);
+  const [crIncludeInvoices, setCrIncludeInvoices] = useState(true);
+  const [crAc, setCrAc] = useState<AcFilter>('all');
+  const [crRoomType, setCrRoomType] = useState<string>('all');
+  const [crBookingStatus, setCrBookingStatus] = useState<string>('all');
+  const [crPaymentStatus, setCrPaymentStatus] = useState<string>('all');
+  const [crGst, setCrGst] = useState<GstFilter>('all');
+
   // Fetch all data in parallel
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -554,6 +620,95 @@ export default function ReportsPage() {
     };
   }, [bookings, rooms, invoices, period, startStr, endStr]);
 
+  // ── Custom report computation ───────────────────────────────────────────────
+  // Inclusive date-range filter on created_at, plus the booking facet filters.
+
+  const customReport = useMemo(() => {
+    // Normalise to inclusive [from 00:00, to 23:59:59] boundaries.
+    const fromTs = crFrom ? new Date(`${crFrom}T00:00:00`).getTime() : -Infinity;
+    const toTs = crTo ? new Date(`${crTo}T23:59:59.999`).getTime() : Infinity;
+    const inRange = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return t >= fromTs && t <= toTs;
+    };
+
+    // ── Bookings ──────────────────────────────────────────────────────────────
+    const filteredBookings: Booking[] = [];
+    let totalRevenue = 0;
+    let totalGst = 0;
+    let totalDue = 0;
+    let acCount = 0;
+    let nonAcCount = 0;
+    const byRoomType: Record<string, { count: number; revenue: number }> = {};
+    const byBookingStatus: Record<string, number> = {};
+    const byPaymentStatus: Record<string, number> = {};
+
+    if (crIncludeBookings) {
+      for (const b of bookings) {
+        if (!inRange(b.created_at)) continue;
+        const isAc = bookingIsAc(b);
+        if (crAc === 'ac' && !isAc) continue;
+        if (crAc === 'non_ac' && isAc) continue;
+        const rt = b.rooms?.room_type || 'unknown';
+        if (crRoomType !== 'all' && rt !== crRoomType) continue;
+        if (crBookingStatus !== 'all' && b.booking_status !== crBookingStatus) continue;
+        if (crPaymentStatus !== 'all' && b.payment_status !== crPaymentStatus) continue;
+        const hasGst = bookingHasGst(b);
+        if (crGst === 'gst' && !hasGst) continue;
+        if (crGst === 'no_gst' && hasGst) continue;
+
+        filteredBookings.push(b);
+        const paid = b.paid_amount || 0;
+        totalRevenue += paid;
+        totalGst += b.gst_amount || 0;
+        totalDue += b.due_amount || 0;
+        if (isAc) acCount++; else nonAcCount++;
+        if (!byRoomType[rt]) byRoomType[rt] = { count: 0, revenue: 0 };
+        byRoomType[rt].count++;
+        byRoomType[rt].revenue += paid;
+        byBookingStatus[b.booking_status] = (byBookingStatus[b.booking_status] || 0) + 1;
+        byPaymentStatus[b.payment_status] = (byPaymentStatus[b.payment_status] || 0) + 1;
+      }
+    }
+
+    // ── Invoices ──────────────────────────────────────────────────────────────
+    const filteredInvoices: Invoice[] = [];
+    let invTotal = 0;
+    let invPaid = 0;
+    let invBalance = 0;
+    if (crIncludeInvoices) {
+      for (const inv of invoices) {
+        if (!inRange(inv.created_at)) continue;
+        filteredInvoices.push(inv);
+        invTotal += inv.total_amount || 0;
+        invPaid += inv.paid_amount || 0;
+        invBalance += inv.balance_amount || 0;
+      }
+    }
+
+    return {
+      filteredBookings,
+      totalBookings: filteredBookings.length,
+      totalRevenue,
+      totalGst,
+      totalDue,
+      acCount,
+      nonAcCount,
+      byRoomType,
+      byBookingStatus,
+      byPaymentStatus,
+      filteredInvoices,
+      invCount: filteredInvoices.length,
+      invTotal,
+      invPaid,
+      invBalance,
+    };
+  }, [
+    bookings, invoices, crFrom, crTo,
+    crIncludeBookings, crIncludeInvoices,
+    crAc, crRoomType, crBookingStatus, crPaymentStatus, crGst,
+  ]);
+
   // ── Export handlers ─────────────────────────────────────────────────────────
 
   const handleExport = useCallback(
@@ -700,6 +855,115 @@ export default function ReportsPage() {
     [analytics, bookings, invoices, periodLabel, period]
   );
 
+  const handleCustomExport = useCallback(() => {
+    const acLabel = crAc === 'all' ? 'All' : crAc === 'ac' ? 'AC only' : 'Non-AC only';
+    const gstLabel = crGst === 'all' ? 'All' : crGst === 'gst' ? 'GST applied' : 'No GST';
+    const datasets = [
+      crIncludeBookings ? 'Bookings' : null,
+      crIncludeInvoices ? 'Invoices' : null,
+    ].filter(Boolean).join(' + ') || 'None';
+
+    const rows: (string | number)[][] = [
+      ['Hotel Pride — Custom Report'],
+      ['Generated', new Date().toISOString().split('T')[0]],
+      ['Date Range', `${crFrom || '—'} to ${crTo || '—'}`],
+      [],
+      ['Applied Filters', 'Value'],
+      ['Datasets', datasets],
+      ['AC / Non-AC', acLabel],
+      ['Room Type', crRoomType === 'all' ? 'All' : ROOM_TYPE_LABELS[crRoomType] || crRoomType],
+      ['Booking Status', crBookingStatus === 'all' ? 'All' : STATUS_LABELS[crBookingStatus] || crBookingStatus],
+      ['Payment Status', crPaymentStatus === 'all' ? 'All' : crPaymentStatus],
+      ['GST', gstLabel],
+    ];
+
+    if (crIncludeBookings) {
+      rows.push([]);
+      rows.push(['Bookings Breakdown', 'Value']);
+      rows.push(['Total Bookings', customReport.totalBookings]);
+      rows.push(['Total Revenue (paid)', customReport.totalRevenue]);
+      rows.push(['Total GST Collected', customReport.totalGst]);
+      rows.push(['Outstanding Dues', customReport.totalDue]);
+      rows.push(['AC Bookings', customReport.acCount]);
+      rows.push(['Non-AC Bookings', customReport.nonAcCount]);
+
+      rows.push([]);
+      rows.push(['By Room Type', 'Count', 'Revenue']);
+      for (const o of ROOM_TYPE_OPTIONS) {
+        const v = customReport.byRoomType[o.value];
+        rows.push([o.label, v?.count || 0, v?.revenue || 0]);
+      }
+
+      rows.push([]);
+      rows.push(['By Booking Status', 'Count']);
+      for (const o of BOOKING_STATUS_OPTIONS) {
+        rows.push([o.label, customReport.byBookingStatus[o.value] || 0]);
+      }
+
+      rows.push([]);
+      rows.push(['By Payment Status', 'Count']);
+      for (const o of PAYMENT_STATUS_OPTIONS) {
+        rows.push([o.label, customReport.byPaymentStatus[o.value] || 0]);
+      }
+
+      rows.push([]);
+      rows.push(['Matching Bookings']);
+      rows.push(['Booking #', 'Guest', 'Room', 'Room Type', 'AC', 'Check-in', 'Check-out', 'Nights', 'Base', 'GST', 'Total', 'Paid', 'Due', 'Booking Status', 'Payment Status', 'Created']);
+      for (const b of customReport.filteredBookings) {
+        rows.push([
+          b.booking_number,
+          b.customers?.name || '',
+          b.rooms?.room_number || '',
+          b.rooms?.room_type || '',
+          bookingIsAc(b) ? 'AC' : 'Non-AC',
+          b.check_in_date,
+          b.check_out_date,
+          b.total_nights || 0,
+          b.base_amount || 0,
+          b.gst_amount || 0,
+          b.total_amount || 0,
+          b.paid_amount || 0,
+          b.due_amount || 0,
+          b.booking_status,
+          b.payment_status,
+          b.created_at.split('T')[0],
+        ]);
+      }
+    }
+
+    if (crIncludeInvoices) {
+      rows.push([]);
+      rows.push(['Invoices Breakdown', 'Value']);
+      rows.push(['Total Invoices', customReport.invCount]);
+      rows.push(['Total Amount', customReport.invTotal]);
+      rows.push(['Paid', customReport.invPaid]);
+      rows.push(['Balance', customReport.invBalance]);
+
+      rows.push([]);
+      rows.push(['Matching Invoices']);
+      rows.push(['Invoice #', 'Customer', 'Date', 'Total Amount', 'Tax', 'Paid', 'Balance', 'Payment Status', 'Status', 'Created']);
+      for (const inv of customReport.filteredInvoices) {
+        rows.push([
+          inv.invoice_number,
+          inv.customer_name,
+          inv.invoice_date,
+          inv.total_amount || 0,
+          inv.total_tax || 0,
+          inv.paid_amount || 0,
+          inv.balance_amount || 0,
+          inv.payment_status,
+          inv.status,
+          inv.created_at.split('T')[0],
+        ]);
+      }
+    }
+
+    exportRowsToCsv(`hotel-pride-custom-report-${crFrom}_to_${crTo}.csv`, rows);
+  }, [
+    customReport, crFrom, crTo, crIncludeBookings, crIncludeInvoices,
+    crAc, crRoomType, crBookingStatus, crPaymentStatus, crGst,
+  ]);
+
   // ── Room status colour map (stable reference) ──────────────────────────────
 
   const STATUS_COLORS = {
@@ -762,7 +1026,7 @@ export default function ReportsPage() {
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid grid-cols-4 w-full sm:w-auto sm:inline-flex">
+          <TabsList className="grid grid-cols-5 w-full sm:w-auto sm:inline-flex">
             <TabsTrigger value="overview" className="gap-1.5">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Overview</span>
@@ -778,6 +1042,10 @@ export default function ReportsPage() {
             <TabsTrigger value="guests" className="gap-1.5">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Guests</span>
+            </TabsTrigger>
+            <TabsTrigger value="custom" className="gap-1.5">
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Custom</span>
             </TabsTrigger>
           </TabsList>
 
@@ -1331,6 +1599,360 @@ export default function ReportsPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ── CUSTOM REPORT ─────────────────────────────────────────────────── */}
+          <TabsContent value="custom" className="space-y-6">
+            {/* Builder controls */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-indigo-600" aria-hidden="true" />
+                  Custom Report Builder
+                </CardTitle>
+                <CardDescription>
+                  Pick a date range, datasets and filters, then export a precise CSV.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* Date range */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label htmlFor="cr-from" className="text-sm font-medium text-gray-700">From</label>
+                    <input
+                      id="cr-from"
+                      type="date"
+                      value={crFrom}
+                      max={crTo || undefined}
+                      onChange={(e) => setCrFrom(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="cr-to" className="text-sm font-medium text-gray-700">To</label>
+                    <input
+                      id="cr-to"
+                      type="date"
+                      value={crTo}
+                      min={crFrom || undefined}
+                      onChange={(e) => setCrTo(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Datasets */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Datasets</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={crIncludeBookings}
+                      onClick={() => setCrIncludeBookings((v) => !v)}
+                      className={`inline-flex items-center gap-1.5 px-3 h-9 rounded-md border text-sm font-medium transition-colors ${
+                        crIncludeBookings
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <Calendar className="w-4 h-4" aria-hidden="true" />
+                      Bookings
+                    </button>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={crIncludeInvoices}
+                      onClick={() => setCrIncludeInvoices((v) => !v)}
+                      className={`inline-flex items-center gap-1.5 px-3 h-9 rounded-md border text-sm font-medium transition-colors ${
+                        crIncludeInvoices
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <Receipt className="w-4 h-4" aria-hidden="true" />
+                      Invoices
+                    </button>
+                  </div>
+                </div>
+
+                {/* Booking filters */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Booking Filters</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">AC / Non-AC</label>
+                      <Select value={crAc} onValueChange={(v) => setCrAc(v as AcFilter)} disabled={!crIncludeBookings}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="ac">AC only</SelectItem>
+                          <SelectItem value="non_ac">Non-AC only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">Room Type</label>
+                      <Select value={crRoomType} onValueChange={setCrRoomType} disabled={!crIncludeBookings}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All types</SelectItem>
+                          {ROOM_TYPE_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">Booking Status</label>
+                      <Select value={crBookingStatus} onValueChange={setCrBookingStatus} disabled={!crIncludeBookings}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          {BOOKING_STATUS_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">Payment Status</label>
+                      <Select value={crPaymentStatus} onValueChange={setCrPaymentStatus} disabled={!crIncludeBookings}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          {PAYMENT_STATUS_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">GST</label>
+                      <Select value={crGst} onValueChange={(v) => setCrGst(v as GstFilter)} disabled={!crIncludeBookings}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="gst">GST applied</SelectItem>
+                          <SelectItem value="no_gst">No GST</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <Button
+                    onClick={handleCustomExport}
+                    disabled={!crIncludeBookings && !crIncludeInvoices}
+                    className="gap-1.5"
+                  >
+                    <Download className="w-4 h-4" aria-hidden="true" />
+                    Export CSV
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Results */}
+            {!crIncludeBookings && !crIncludeInvoices ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="flex flex-col items-center justify-center py-14 gap-2 text-center">
+                  <Settings className="w-10 h-10 text-gray-300" aria-hidden="true" />
+                  <p className="text-sm font-medium text-gray-700">Select at least one dataset</p>
+                  <p className="text-xs text-gray-500 max-w-xs">Enable Bookings or Invoices above to build a report.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Booking breakdowns */}
+                {crIncludeBookings && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <StatCard title="Bookings" value={formatNum(customReport.totalBookings)} subtitle="Matching filters" icon={Calendar} color="#6366f1" />
+                      <StatCard title="Revenue (paid)" value={formatINR(customReport.totalRevenue)} subtitle="Sum of paid" icon={IndianRupee} color="#10b981" />
+                      <StatCard title="GST Collected" value={formatINR(customReport.totalGst)} subtitle="Sum of GST" icon={Receipt} color="#8b5cf6" />
+                      <StatCard title="Outstanding Dues" value={formatINR(customReport.totalDue)} subtitle="Sum of dues" icon={AlertCircle} color="#ef4444" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* AC split */}
+                      <Card className="border-0 shadow-sm">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">AC vs Non-AC</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {([
+                            { label: 'AC', val: customReport.acCount, color: '#06b6d4' },
+                            { label: 'Non-AC', val: customReport.nonAcCount, color: '#9ca3af' },
+                          ]).map(({ label, val, color }) => (
+                            <div key={label}>
+                              <div className="flex justify-between text-sm mb-1">
+                                <span className="font-medium text-gray-700">{label}</span>
+                                <span className="text-gray-500 tabular-nums">{val}</span>
+                              </div>
+                              <ProgressBar value={val} max={customReport.totalBookings || 1} color={color} />
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+
+                      {/* By room type */}
+                      <Card className="border-0 shadow-sm">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">By Room Type</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {ROOM_TYPE_OPTIONS.map((o, i) => {
+                            const v = customReport.byRoomType[o.value];
+                            const color = ['#6366f1', '#f59e0b', '#10b981'][i];
+                            return (
+                              <div key={o.value}>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span className="font-medium text-gray-700">{o.label}</span>
+                                  <span className="text-gray-500 tabular-nums">{v?.count || 0} · {formatINR(v?.revenue || 0)}</span>
+                                </div>
+                                <ProgressBar value={v?.count || 0} max={customReport.totalBookings || 1} color={color} />
+                              </div>
+                            );
+                          })}
+                        </CardContent>
+                      </Card>
+
+                      {/* By status */}
+                      <Card className="border-0 shadow-sm">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">By Booking Status</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {BOOKING_STATUS_OPTIONS.map((o) => {
+                            const val = customReport.byBookingStatus[o.value] || 0;
+                            return (
+                              <div key={o.value}>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span className="font-medium text-gray-700">{o.label}</span>
+                                  <span className="text-gray-500 tabular-nums">{val}</span>
+                                </div>
+                                <ProgressBar value={val} max={customReport.totalBookings || 1} color="#6366f1" />
+                              </div>
+                            );
+                          })}
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Matching bookings table */}
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Matching Bookings</CardTitle>
+                        <CardDescription>{customReport.totalBookings} result{customReport.totalBookings !== 1 ? 's' : ''}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {customReport.filteredBookings.length === 0 ? (
+                          <div className="flex flex-col items-center py-10 text-gray-400 gap-2">
+                            <Calendar className="w-10 h-10 opacity-30" />
+                            <p className="text-sm">No bookings match these filters</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b text-gray-400 text-xs uppercase tracking-wide">
+                                  <th className="text-left pb-2">Booking #</th>
+                                  <th className="text-left pb-2">Guest</th>
+                                  <th className="text-left pb-2">Room</th>
+                                  <th className="text-left pb-2">AC</th>
+                                  <th className="text-right pb-2">Paid</th>
+                                  <th className="text-right pb-2">GST</th>
+                                  <th className="text-left pb-2 pl-2">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {customReport.filteredBookings.slice(0, 50).map((b) => (
+                                  <tr key={b.id} className="border-b last:border-0 hover:bg-gray-50">
+                                    <td className="py-2 font-medium text-indigo-600">{b.booking_number}</td>
+                                    <td className="py-2 text-gray-800">{b.customers?.name || '—'}</td>
+                                    <td className="py-2 text-gray-600">{b.rooms?.room_number || '—'}</td>
+                                    <td className="py-2 text-gray-600">{bookingIsAc(b) ? 'AC' : 'Non-AC'}</td>
+                                    <td className="py-2 text-right tabular-nums font-semibold">{formatINR(b.paid_amount || 0)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-600">{formatINR(b.gst_amount || 0)}</td>
+                                    <td className="py-2 pl-2">
+                                      <Badge className="text-xs border-0 bg-gray-100 text-gray-700">{b.booking_status.replace('_', ' ')}</Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {customReport.filteredBookings.length > 50 && (
+                              <p className="text-xs text-gray-400 mt-3">Showing first 50 — full set in the CSV export.</p>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Invoice breakdowns */}
+                {crIncludeInvoices && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <StatCard title="Invoices" value={formatNum(customReport.invCount)} subtitle="Matching range" icon={FileText} color="#6366f1" />
+                      <StatCard title="Total Amount" value={formatINR(customReport.invTotal)} subtitle="Sum of totals" icon={IndianRupee} color="#f59e0b" />
+                      <StatCard title="Paid" value={formatINR(customReport.invPaid)} subtitle="Sum paid" icon={CheckCircle2} color="#10b981" />
+                      <StatCard title="Balance" value={formatINR(customReport.invBalance)} subtitle="Sum balance" icon={AlertCircle} color="#ef4444" />
+                    </div>
+
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Matching Invoices</CardTitle>
+                        <CardDescription>{customReport.invCount} result{customReport.invCount !== 1 ? 's' : ''}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {customReport.filteredInvoices.length === 0 ? (
+                          <div className="flex flex-col items-center py-10 text-gray-400 gap-2">
+                            <Receipt className="w-10 h-10 opacity-30" />
+                            <p className="text-sm">No invoices in this range</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b text-gray-400 text-xs uppercase tracking-wide">
+                                  <th className="text-left pb-2">Invoice #</th>
+                                  <th className="text-left pb-2">Customer</th>
+                                  <th className="text-right pb-2">Total</th>
+                                  <th className="text-right pb-2">Paid</th>
+                                  <th className="text-right pb-2">Balance</th>
+                                  <th className="text-left pb-2 pl-2">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {customReport.filteredInvoices.slice(0, 50).map((inv) => (
+                                  <tr key={inv.id} className="border-b last:border-0 hover:bg-gray-50">
+                                    <td className="py-2 font-medium text-indigo-600">{inv.invoice_number}</td>
+                                    <td className="py-2 text-gray-800 truncate max-w-[140px]">{inv.customer_name}</td>
+                                    <td className="py-2 text-right tabular-nums font-semibold">{formatINR(inv.total_amount || 0)}</td>
+                                    <td className="py-2 text-right tabular-nums text-emerald-600">{formatINR(inv.paid_amount || 0)}</td>
+                                    <td className="py-2 text-right tabular-nums text-red-600">{formatINR(inv.balance_amount || 0)}</td>
+                                    <td className="py-2 pl-2">
+                                      <Badge className="text-xs border-0 bg-gray-100 text-gray-700">{inv.payment_status}</Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {customReport.filteredInvoices.length > 50 && (
+                              <p className="text-xs text-gray-400 mt-3">Showing first 50 — full set in the CSV export.</p>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </>
+            )}
           </TabsContent>
         </Tabs>
       )}

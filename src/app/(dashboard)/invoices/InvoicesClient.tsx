@@ -7,22 +7,27 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Plus, 
-  Search, 
-  Download, 
-  Mail, 
-  Eye, 
-  Edit, 
+import {
+  Plus,
+  Search,
+  Download,
+  Mail,
+  Eye,
+  Edit,
   Trash2,
   FileText,
   Calendar,
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  ChevronUpIcon,
+  ChevronDown
 } from '@/components/icons';
 import { toast } from 'sonner';
 import { InvoiceListItem, InvoiceFilters, INVOICE_STATUSES, PAYMENT_STATUSES } from '@/lib/types/invoice';
 import { formatCurrency } from '@/lib/utils/invoice-calculations';
+
+type SortColumn = 'invoice_number' | 'customer' | 'invoice_date' | 'amount' | 'status';
+type SortDirection = 'asc' | 'desc';
 
 export default function InvoicesClient() {
   const router = useRouter();
@@ -32,6 +37,8 @@ export default function InvoicesClient() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('invoice_date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [stats, setStats] = useState({
     total_invoices: 0,
     total_amount: 0,
@@ -98,6 +105,45 @@ export default function InvoicesClient() {
     }));
     setCurrentPage(1);
   };
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortIndicator = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ChevronDown className="w-3.5 h-3.5 text-gray-300" aria-hidden="true" />;
+    }
+    return sortDirection === 'asc'
+      ? <ChevronUpIcon className="w-3.5 h-3.5 text-gray-700" aria-hidden="true" />
+      : <ChevronDown className="w-3.5 h-3.5 text-gray-700" aria-hidden="true" />;
+  };
+
+  const ariaSort = (column: SortColumn): 'ascending' | 'descending' | 'none' =>
+    sortColumn === column ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  // Client-side sort applied to the current (already filtered) page of invoices.
+  const sortedInvoices = [...invoices].sort((a, b) => {
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    switch (sortColumn) {
+      case 'invoice_number':
+        return a.invoice_number.localeCompare(b.invoice_number, undefined, { numeric: true }) * dir;
+      case 'customer':
+        return a.customer_name.localeCompare(b.customer_name) * dir;
+      case 'amount':
+        return (a.total_amount - b.total_amount) * dir;
+      case 'status':
+        return a.status.localeCompare(b.status) * dir;
+      case 'invoice_date':
+      default:
+        return (new Date(a.invoice_date).getTime() - new Date(b.invoice_date).getTime()) * dir;
+    }
+  });
 
   // Invoice deletion is intentionally disabled in the UI for now. When it is
   // re-enabled it must SOFT-delete (set a deleted_at flag and filter it out)
@@ -213,6 +259,46 @@ export default function InvoicesClient() {
                   ))}
                 </SelectContent>
               </Select>
+
+              {/* Invoice date range */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="invoice-date-from" className="text-sm text-gray-600 whitespace-nowrap">
+                  From
+                </label>
+                <Input
+                  id="invoice-date-from"
+                  type="date"
+                  aria-label="Invoice date from"
+                  value={filters.date_from || ''}
+                  max={filters.date_to || undefined}
+                  onChange={(e) => handleFilterChange('date_from', e.target.value)}
+                  className="w-[150px]"
+                />
+                <label htmlFor="invoice-date-to" className="text-sm text-gray-600 whitespace-nowrap">
+                  to
+                </label>
+                <Input
+                  id="invoice-date-to"
+                  type="date"
+                  aria-label="Invoice date to"
+                  value={filters.date_to || ''}
+                  min={filters.date_from || undefined}
+                  onChange={(e) => handleFilterChange('date_to', e.target.value)}
+                  className="w-[150px]"
+                />
+                {(filters.date_from || filters.date_to) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      handleFilterChange('date_from', '');
+                      handleFilterChange('date_to', '');
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
             </div>
             
             <Button onClick={() => router.push('/invoices/new')} className="flex items-center gap-2">
@@ -245,18 +331,48 @@ export default function InvoicesClient() {
               )}
             </div>
           ) : (
-            <div className="space-y-4">
-              {invoices.map((invoice) => (
-                <div key={invoice.id} className="border rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <div className="space-y-2">
+              {/* Sortable column header bar (desktop) */}
+              <div role="row" className="hidden md:flex items-center gap-4 px-3 py-2 border-b text-xs font-medium text-gray-600">
+                <div role="columnheader" aria-sort={ariaSort('invoice_number')} className="w-40">
+                  <button type="button" onClick={() => handleSort('invoice_number')} className="flex items-center gap-1 hover:text-gray-900">
+                    Invoice # {sortIndicator('invoice_number')}
+                  </button>
+                </div>
+                <div role="columnheader" aria-sort={ariaSort('customer')} className="flex-1">
+                  <button type="button" onClick={() => handleSort('customer')} className="flex items-center gap-1 hover:text-gray-900">
+                    Customer {sortIndicator('customer')}
+                  </button>
+                </div>
+                <div role="columnheader" aria-sort={ariaSort('invoice_date')} className="w-28">
+                  <button type="button" onClick={() => handleSort('invoice_date')} className="flex items-center gap-1 hover:text-gray-900">
+                    Date {sortIndicator('invoice_date')}
+                  </button>
+                </div>
+                <div role="columnheader" aria-sort={ariaSort('amount')} className="w-28">
+                  <button type="button" onClick={() => handleSort('amount')} className="flex items-center gap-1 hover:text-gray-900">
+                    Amount {sortIndicator('amount')}
+                  </button>
+                </div>
+                <div role="columnheader" aria-sort={ariaSort('status')} className="w-28">
+                  <button type="button" onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900">
+                    Status {sortIndicator('status')}
+                  </button>
+                </div>
+                <span className="w-[180px]" aria-hidden="true" />
+              </div>
+
+              {sortedInvoices.map((invoice) => (
+                <div key={invoice.id} className="border rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-4 mb-2">
-                        <h3 className="font-semibold text-lg">{invoice.invoice_number}</h3>
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <h3 className="font-semibold text-base">{invoice.invoice_number}</h3>
                         {getStatusBadge(invoice.status, 'invoice')}
                         {getStatusBadge(invoice.payment_status, 'payment')}
                       </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
                         <div>
                           <span className="font-medium">Customer:</span> {invoice.customer_name}
                         </div>
@@ -267,14 +383,14 @@ export default function InvoicesClient() {
                           <span className="font-medium">Amount:</span> {formatCurrency(invoice.total_amount)}
                         </div>
                         <div>
-                          <span className="font-medium">Balance:</span> 
+                          <span className="font-medium">Balance:</span>{' '}
                           <span className={invoice.balance_amount > 0 ? 'text-red-600' : 'text-green-600'}>
                             {formatCurrency(invoice.balance_amount)}
                           </span>
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"

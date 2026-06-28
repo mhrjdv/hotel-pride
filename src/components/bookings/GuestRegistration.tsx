@@ -4,25 +4,22 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CustomerSelection } from './CustomerSelection';
 import { AddCustomerFormBooking } from './AddCustomerFormBooking';
-import { 
-  User, 
-  Plus, 
-  Search, 
-  Phone, 
-  Mail, 
-  CreditCard, 
-  MapPin, 
-  Users, 
+import {
+  Plus,
+  Search,
+  Phone,
+  CreditCard,
   Trash2,
   Edit,
   AlertCircle,
-  CheckCircle2,
   UserCheck,
-  UserPlus
+  UserPlus,
+  ChevronDown,
+  ChevronRight,
+  X
 } from '@/components/icons';
 import { toast } from 'sonner';
 import { Customer, BookingData } from '@/lib/types/booking';
@@ -41,8 +38,10 @@ const idTypeLabels = {
 };
 
 export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps) {
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [addGuestOpen, setAddGuestOpen] = useState(false);
+  // Inline panels (no modals) for selecting the primary guest and adding additional guests.
+  const [primarySearchOpen, setPrimarySearchOpen] = useState(false);
+  const [addGuestSearchOpen, setAddGuestSearchOpen] = useState(false);
+  const [additionalGuestsExpanded, setAdditionalGuestsExpanded] = useState(false);
   const [editingGuest, setEditingGuest] = useState<Customer | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -68,12 +67,12 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
   };
 
   const handlePrimaryGuestSelect = (customer: Customer) => {
-    onDataChange({ 
+    onDataChange({
       primaryGuest: customer,
       customerId: customer.id,
       primaryGuestName: customer.name
     });
-    setSearchOpen(false);
+    setPrimarySearchOpen(false);
     validateGuestData();
   };
 
@@ -89,11 +88,12 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
 
 
     const updatedGuests: Customer[] = [...currentGuests, customer];
-    onDataChange({ 
+    onDataChange({
       additionalGuests: updatedGuests,
       totalGuests: 1 + updatedGuests.length // Primary + additional
     });
-    setAddGuestOpen(false);
+    setAddGuestSearchOpen(false);
+    setAdditionalGuestsExpanded(true);
     validateGuestData();
     toast.success(`${customer.name} added as additional guest`);
   };
@@ -110,96 +110,108 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
     }
   };
 
-  const handleNewCustomerCreated = (customer: Customer) => {
-    if (!data.primaryGuest) {
-      handlePrimaryGuestSelect(customer);
-      toast.success(`${customer.name} added as primary guest`);
-    } else {
-      handleAddAdditionalGuest(customer);
-    }
-  };
-
   const handleEditGuest = (customer: Customer) => {
     setEditingGuest(customer);
   };
 
-  const renderGuestCard = (customer: Customer, isPrimary: boolean = false) => (
-    <div 
-      key={customer.id}
-      className={`p-4 border rounded-lg transition-all ${
-        isPrimary 
-          ? 'bg-blue-50 border-blue-200' 
-          : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-      }`}
-    >
-      <div className="flex items-start justify-between">
+  // Called when an existing guest is edited and saved via the modal form.
+  const handleGuestUpdated = (customer: Customer) => {
+    if (data.primaryGuest?.id === customer.id) {
+      onDataChange({
+        primaryGuest: customer,
+        customerId: customer.id,
+        primaryGuestName: customer.name
+      });
+    } else {
+      const updatedGuests = ((data.additionalGuests as Customer[] | undefined) || []).map((g) =>
+        g.id === customer.id ? customer : g
+      );
+      onDataChange({ additionalGuests: updatedGuests });
+    }
+    setEditingGuest(null);
+  };
+
+  // IDs already used by the booking, so they're excluded from search results.
+  const additionalGuestIds = (data.additionalGuests as Customer[] | undefined)?.map((g) => g.id) || [];
+  const excludeCustomerIds = data.primaryGuest
+    ? [data.primaryGuest.id, ...additionalGuestIds]
+    : additionalGuestIds;
+
+  // Rich card used for the primary guest.
+  const renderPrimaryCard = (customer: Customer) => (
+    <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <h3 className="font-semibold text-lg truncate">{customer.name}</h3>
-            <Badge className={isPrimary ? 'bg-blue-600' : 'bg-gray-600'}>
-              {isPrimary ? 'Primary Guest' : 'Additional Guest'}
-            </Badge>
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <h3 className="font-semibold text-base sm:text-lg truncate">{customer.name}</h3>
+            <Badge className="bg-blue-600">Primary Guest</Badge>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
             <div className="flex items-center gap-2">
               <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
               <span className="truncate">{customer.phone}</span>
             </div>
-            
-            {customer.email && (
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                <span className="truncate">{customer.email}</span>
-              </div>
-            )}
-            
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-gray-500 flex-shrink-0" />
               <span className="truncate">
                 {idTypeLabels[customer.id_type]} - {customer.id_number}
               </span>
             </div>
-            
-            {customer.city && customer.state && (
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                <span className="truncate">{customer.city}, {customer.state}</span>
-              </div>
-            )}
           </div>
         </div>
-        
-        <div className="flex gap-2 ml-4">
-          <Button 
-            variant="outline" 
+        <div className="flex gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => handleEditGuest(customer)}
-            className="flex-shrink-0"
+            aria-label="Edit primary guest"
           >
             <Edit className="w-4 h-4" />
           </Button>
-          
-          {isPrimary ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setSearchOpen(true)}
-              className="flex-shrink-0"
-            >
-              <Search className="w-4 h-4" />
-            </Button>
-          ) : (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => handleRemoveGuest(customer.id)}
-                             className="flex-shrink-0 text-red-600 hover:text-red-700"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPrimarySearchOpen((v) => !v)}
+            aria-label="Change primary guest"
+          >
+            <Search className="w-4 h-4" />
+          </Button>
         </div>
+      </div>
+    </div>
+  );
+
+  // Compact single-row layout for each additional guest.
+  const renderAdditionalGuestRow = (customer: Customer) => (
+    <div
+      key={customer.id}
+      className="flex items-center justify-between gap-2 px-3 py-2 border rounded-md bg-gray-50"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-sm truncate">{customer.name}</p>
+        <p className="text-xs text-gray-500 truncate">
+          {customer.phone} • {idTypeLabels[customer.id_type]}
+        </p>
+      </div>
+      <div className="flex gap-1 flex-shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleEditGuest(customer)}
+          className="h-8 w-8 p-0"
+          aria-label={`Edit ${customer.name}`}
+        >
+          <Edit className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleRemoveGuest(customer.id)}
+          className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+          aria-label={`Remove ${customer.name}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
       </div>
     </div>
   );
@@ -233,178 +245,133 @@ export function GuestRegistration({ data, onDataChange }: GuestRegistrationProps
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {data.primaryGuest ? (
-            <div className="space-y-4">
-              {renderGuestCard(data.primaryGuest, true)}
-            </div>
+        <CardContent className="space-y-4">
+          {data.primaryGuest && !primarySearchOpen ? (
+            renderPrimaryCard(data.primaryGuest)
           ) : (
-            <div className="space-y-4">
-              <div className="text-center py-8 text-gray-600">
-                <User className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-lg font-medium mb-2">Select Primary Guest</p>
-                <p className="mb-4 text-sm">
-                  The primary guest is the main contact person for this booking
-                </p>
-                <div className="flex gap-2 justify-center">
-                  <Button onClick={() => setSearchOpen(true)}>
-                    <Search className="w-4 h-4 mr-2" />
-                    Search Customer
-                  </Button>
-                  <Button variant="outline" onClick={() => setEditingGuest({} as Customer)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Customer
+            <div className="space-y-3">
+              {data.primaryGuest && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-700">Change primary guest</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPrimarySearchOpen(false)}
+                    aria-label="Cancel changing primary guest"
+                  >
+                    <X className="w-4 h-4" />
                   </Button>
                 </div>
-              </div>
+              )}
+              {/* Inline customer search + create (no modals). */}
+              <CustomerSelection
+                onCustomerSelect={handlePrimaryGuestSelect}
+                showCreateNew={true}
+                excludeCustomerIds={excludeCustomerIds}
+              />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Additional Guests */}
+      {/* Additional Guests (collapsible) */}
       {data.primaryGuest && (
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5" />
-                Additional Guests
-                <span className="text-sm font-normal text-gray-500">
-                  ({data.additionalGuests?.length || 0} added)
-                </span>
-              </CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setAdditionalGuestsExpanded((v) => !v)}
+                className="flex items-center gap-2 text-left flex-1 min-w-0"
+                aria-expanded={additionalGuestsExpanded}
+                aria-controls="additional-guests-panel"
+              >
+                {additionalGuestsExpanded ? (
+                  <ChevronDown className="w-4 h-4 flex-shrink-0" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                )}
+                <UserPlus className="w-5 h-5 flex-shrink-0" />
+                <span className="font-semibold">Additional Guests</span>
+                <Badge variant="outline" className="text-xs">
+                  {additionalGuestIds.length}
+                </Badge>
+              </button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setAddGuestOpen(true)}
+                onClick={() => {
+                  setAdditionalGuestsExpanded(true);
+                  setAddGuestSearchOpen((v) => !v);
+                }}
+                className="flex-shrink-0"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Guest
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            {data.additionalGuests && (data.additionalGuests as Customer[]).length > 0 ? (
-              <div className="space-y-3">
-                {(data.additionalGuests as Customer[]).map((guest: Customer) => renderGuestCard(guest, false))}
-              </div>
-            ) : (
-              <div className="text-center py-6 text-gray-500">
-                <Users className="w-8 h-8 mx-auto text-gray-400 mb-3" />
-                <p className="text-sm">No additional guests added</p>
-                <p className="text-xs mt-1">
-                  Click &quot;Add Guest&quot; to include more guests in this booking
-                </p>
-              </div>
-            )}
 
-            {/* Guest Information */}
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Total Guests:</span>
+          {additionalGuestsExpanded && (
+            <CardContent id="additional-guests-panel" className="space-y-3 pt-0">
+              {/* Inline add-guest search panel, revealed one at a time. */}
+              {addGuestSearchOpen && (
+                <div className="rounded-lg border p-3 bg-gray-50/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-700">Add a guest</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAddGuestSearchOpen(false)}
+                      aria-label="Close add guest"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <CustomerSelection
+                    onCustomerSelect={handleAddAdditionalGuest}
+                    showCreateNew={true}
+                    excludeCustomerIds={excludeCustomerIds}
+                  />
+                </div>
+              )}
+
+              {additionalGuestIds.length > 0 ? (
+                <div className="space-y-2">
+                  {(data.additionalGuests as Customer[]).map((guest) => renderAdditionalGuestRow(guest))}
+                </div>
+              ) : (
+                !addGuestSearchOpen && (
+                  <p className="text-sm text-gray-500 py-2">
+                    No additional guests added. Click &quot;Add Guest&quot; to include more.
+                  </p>
+                )
+              )}
+
+              <div className="flex items-center justify-between text-sm pt-2 border-t">
+                <span className="text-gray-600">Total Guests</span>
                 <span className="font-medium text-blue-600">
                   {totalSelectedGuests} guest{totalSelectedGuests > 1 ? 's' : ''}
                 </span>
               </div>
-            </div>
-          </CardContent>
+            </CardContent>
+          )}
         </Card>
       )}
 
-      {/* Guest Summary */}
-      {data.primaryGuest && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5" />
-              Guest Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-2xl font-bold text-blue-600">1</p>
-                <p className="text-sm text-gray-600">Primary Guest</p>
-              </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{(data.additionalGuests as Customer[] | undefined)?.length || 0}</p>
-                <p className="text-sm text-gray-600">Additional Guests</p>
-              </div>
-              <div className="p-3 bg-purple-50 rounded-lg">
-                <p className="text-2xl font-bold text-purple-600">
-                  {totalSelectedGuests}
-                </p>
-                <p className="text-sm text-gray-600">Total Guests</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Edit existing guest (modal form only for editing) */}
+      {editingGuest?.id && (
+        <AddCustomerFormBooking
+          isOpen={!!editingGuest}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setEditingGuest(null);
+            }
+          }}
+          customer={editingGuest}
+          onSuccess={handleGuestUpdated}
+        />
       )}
-
-      {/* Customer Search Dialog */}
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {data.primaryGuest ? 'Change Primary Guest' : 'Select Primary Guest'}
-            </DialogTitle>
-          </DialogHeader>
-          <CustomerSelection 
-            onCustomerSelect={data.primaryGuest ? handleAddAdditionalGuest : handlePrimaryGuestSelect}
-            showCreateNew={true}
-            onCreateNew={() => {
-              setSearchOpen(false);
-              setEditingGuest({} as Customer);
-            }}
-            excludeCustomerIds={
-              data.primaryGuest
-                ? [
-                    data.primaryGuest.id,
-                    ...(((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
-                  ]
-                : (((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
-            }
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Additional Guest Dialog */}
-      <Dialog open={addGuestOpen} onOpenChange={setAddGuestOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Additional Guest</DialogTitle>
-          </DialogHeader>
-          <CustomerSelection 
-            onCustomerSelect={handleAddAdditionalGuest}
-            showCreateNew={true}
-            onCreateNew={() => {
-              setAddGuestOpen(false);
-              setEditingGuest({} as Customer);
-            }}
-            excludeCustomerIds={
-              data.primaryGuest
-                ? [
-                    data.primaryGuest.id,
-                    ...(((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
-                  ]
-                : (((data.additionalGuests as Customer[] | undefined)?.map((g: Customer) => g.id) || []))
-            }
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Customer Form Dialog */}
-      <AddCustomerFormBooking
-        isOpen={!!editingGuest}
-        onOpenChange={(open: boolean) => {
-          if (!open) {
-            setEditingGuest(null);
-          }
-        }}
-        customer={editingGuest?.id ? editingGuest : undefined}
-        onSuccess={handleNewCustomerCreated}
-      />
     </div>
   );
 } 

@@ -1,25 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo, ElementType } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
-import { 
-  CreditCard, 
-  Banknote, 
-  Smartphone, 
-  Building, 
-  Calculator,
-  IndianRupee,
-  Receipt,
-  AlertCircle,
-  CheckCircle,
-  Info
-} from '@/components/icons';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { IndianRupee, AlertCircle } from '@/components/icons';
 import { calculateBookingAmount, formatBookingCalculation } from '@/lib/utils/gst';
 import { toast } from 'sonner';
 import { BookingData } from '@/lib/types/booking';
@@ -29,460 +16,253 @@ interface PaymentProcessingProps {
   onDataChange: (data: Partial<BookingData>) => void;
 }
 
-type PaymentMethod = 'cash' | 'card' | 'upi' | 'bank_transfer';
+type PaymentMethod = NonNullable<BookingData['paymentMethod']>;
 
-const paymentMethods: {
-  value: PaymentMethod,
-  label: string,
-  icon: ElementType,
-  description: string,
-  requiresReference: boolean
-}[] = [
-  { 
-    value: 'cash', 
-    label: 'Cash', 
-    icon: Banknote, 
-    description: 'Payment in cash',
-    requiresReference: false
-  },
-  { 
-    value: 'card', 
-    label: 'Card (Credit/Debit)', 
-    icon: CreditCard, 
-    description: 'Credit or debit card payment',
-    requiresReference: true
-  },
-  { 
-    value: 'upi', 
-    label: 'UPI', 
-    icon: Smartphone, 
-    description: 'UPI payment (PhonePe, Paytm, GPay, etc.)',
-    requiresReference: true
-  },
-  { 
-    value: 'bank_transfer', 
-    label: 'Bank Transfer', 
-    icon: Building, 
-    description: 'Direct bank transfer/NEFT/RTGS',
-    requiresReference: true
-  }
+const paymentMethods: { value: PaymentMethod; label: string; requiresReference: boolean }[] = [
+  { value: 'cash', label: 'Cash', requiresReference: false },
+  { value: 'card', label: 'Card (Credit/Debit)', requiresReference: true },
+  { value: 'upi', label: 'UPI', requiresReference: true },
+  { value: 'bank_transfer', label: 'Bank Transfer', requiresReference: true },
 ];
 
-type PaymentType = 'full' | 'partial' | 'advance';
-
 const gstModeLabels = {
-  'inclusive': 'GST Inclusive',
-  'exclusive': 'GST Exclusive', 
-  'none': 'No GST'
+  inclusive: 'GST Inclusive',
+  exclusive: 'GST Exclusive',
+  none: 'No GST',
 };
 
 export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps) {
-  const [paymentType, setPaymentType] = useState<PaymentType>('full');
-  const [customAmount, setCustomAmount] = useState<string>('');
+  const [amountInput, setAmountInput] = useState<string>('');
 
-  // Calculate pricing breakdown using new system
+  // Calculate pricing breakdown using the GST system.
   const pricingCalculation = useMemo(() => {
-    return data.room && data.totalNights ? calculateBookingAmount({
-      baseRoomRate: data.room.current_rate,
-      customRoomRate: data.useCustomRate ? data.customRoomRate : undefined,
-      nights: data.totalNights,
-      extraBeds: data.extraBeds,
-      additionalCharges: data.additionalCharges,
-      gstMode: data.gstMode || 'inclusive'
-    }) : null;
+    return data.room && data.totalNights
+      ? calculateBookingAmount({
+          baseRoomRate: data.room.current_rate,
+          customRoomRate: data.useCustomRate ? data.customRoomRate : undefined,
+          nights: data.totalNights,
+          extraBeds: data.extraBeds,
+          additionalCharges: data.additionalCharges,
+          gstMode: data.gstMode || 'inclusive',
+        })
+      : null;
   }, [data.room, data.totalNights, data.useCustomRate, data.customRoomRate, data.extraBeds, data.additionalCharges, data.gstMode]);
 
   const formattedPricing = pricingCalculation ? formatBookingCalculation(pricingCalculation) : null;
   const totalAmount = pricingCalculation?.totalAmount || data.totalAmount || 0;
-  const dueAmount = totalAmount - (data.paymentAmount || 0);
+  const paidAmount = data.paymentAmount || 0;
+  const dueAmount = totalAmount - paidAmount;
 
   useEffect(() => {
     if (pricingCalculation) {
       onDataChange({
         baseAmount: pricingCalculation.baseAmount,
         gstAmount: pricingCalculation.gstAmount,
-        totalAmount: pricingCalculation.totalAmount
+        totalAmount: pricingCalculation.totalAmount,
       });
     }
   }, [onDataChange, pricingCalculation]);
 
+  // Default the payment amount to the full total once pricing is known.
   useEffect(() => {
     if (!data.paymentAmount && pricingCalculation) {
       onDataChange({ paymentAmount: pricingCalculation.totalAmount });
-      setPaymentType('full');
-      setCustomAmount(pricingCalculation.totalAmount.toString());
+      setAmountInput(pricingCalculation.totalAmount.toString());
     }
   }, [data.paymentAmount, onDataChange, pricingCalculation]);
 
-  const handlePaymentMethodChange = (method: PaymentMethod) => {
-    onDataChange({ 
-      paymentMethod: method,
-      referenceNumber: '',
-      paymentAmount: paymentType === 'full' ? totalAmount : data.paymentAmount
+  // Keep the input in sync when the amount is set elsewhere (e.g. quick helpers).
+  useEffect(() => {
+    setAmountInput((prev) => {
+      const prevNum = parseFloat(prev);
+      return prevNum === (data.paymentAmount ?? 0) ? prev : String(data.paymentAmount ?? 0);
     });
+  }, [data.paymentAmount]);
+
+  const handlePaymentMethodChange = (method: PaymentMethod) => {
+    onDataChange({ paymentMethod: method, referenceNumber: '' });
   };
 
-  const handlePaymentTypeChange = (type: PaymentType) => {
-    setPaymentType(type);
-    
-    if (type === 'full') {
-      onDataChange({ paymentAmount: totalAmount });
-      setCustomAmount(totalAmount.toString());
-    } else if (type === 'advance') {
-      const advanceAmount = Math.round(totalAmount * 0.3); // 30% advance
-      onDataChange({ paymentAmount: advanceAmount });
-      setCustomAmount(advanceAmount.toString());
-    } else {
-      onDataChange({ paymentAmount: 0 });
-      setCustomAmount('0');
-    }
-  };
-
-  const handleCustomAmountChange = (value: string) => {
-    setCustomAmount(value);
+  const handleAmountChange = (value: string) => {
+    setAmountInput(value);
     const amount = parseFloat(value) || 0;
-    
     if (amount > totalAmount) {
       toast.error('Payment amount cannot exceed total booking amount');
       return;
     }
-    
     onDataChange({ paymentAmount: amount });
   };
 
-  const selectedMethod = paymentMethods.find(m => m.value === data.paymentMethod);
-  const paymentStatus = data.paymentAmount === totalAmount ? 'paid' : 
-                       data.paymentAmount && data.paymentAmount > 0 ? 'partial' : 'pending';
+  const setQuickAmount = (amount: number) => {
+    setAmountInput(amount.toString());
+    onDataChange({ paymentAmount: amount });
+  };
+
+  const selectedMethod = paymentMethods.find((m) => m.value === data.paymentMethod);
+  const paymentStatus = paidAmount === totalAmount && totalAmount > 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending';
+  const advanceAmount = Math.round(totalAmount * 0.3);
 
   if (!data.room || !pricingCalculation) {
     return (
-      <div className="text-center py-8 text-gray-600">
-        <AlertCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-        <p className="text-lg font-medium">No room selected</p>
-        <p>Please go back and select a room to proceed with payment</p>
+      <div className="py-8 text-center text-muted-foreground">
+        <AlertCircle className="mx-auto mb-3 h-10 w-10 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm font-medium text-foreground">No room selected</p>
+        <p className="text-sm">Go back and select a room to process payment.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Booking Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Receipt className="w-5 h-5" />
-            Booking Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {/* Room & Stay Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">Room Details</h4>
-                <div className="space-y-1 text-sm">
-                  <p><span className="text-gray-600">Room:</span> {data.room.room_number}</p>
-                  <p><span className="text-gray-600">Type:</span> {data.room.room_type.replace('-', ' ')}</p>
-                  <p><span className="text-gray-600">Rate:</span> {data.useCustomRate && data.customRoomRate ? 
-                    `₹${data.customRoomRate.toLocaleString('en-IN')} (Custom)` : 
-                    `₹${data.room.current_rate.toLocaleString('en-IN')}`}/night</p>
-                  {data.useCustomRate && (
-                    <p className="text-xs text-blue-600">
-                      Original rate: ₹{data.room.current_rate.toLocaleString('en-IN')}/night
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">Stay Details</h4>
-                <div className="space-y-1 text-sm">
-                  <p><span className="text-gray-600">Check-in:</span> {data.checkInDate ? new Date(data.checkInDate).toLocaleDateString('en-IN') : 'N/A'}</p>
-                  <p><span className="text-gray-600">Check-out:</span> {data.checkOutDate ? new Date(data.checkOutDate).toLocaleDateString('en-IN') : 'N/A'}</p>
-                  <p><span className="text-gray-600">Nights:</span> {data.totalNights}</p>
-                  {data.extraBeds && data.extraBeds.quantity > 0 && (
-                    <p><span className="text-gray-600">Extra beds:</span> {data.extraBeds.quantity} × ₹{data.extraBeds.ratePerBed.toLocaleString('en-IN')}/night</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Guest Information */}
-            {data.primaryGuest && (
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Primary Guest</h4>
-                <div className="text-sm text-blue-800">
-                  <p><strong>{data.primaryGuest.name}</strong></p>
-                  <p>{data.primaryGuest.phone} • {data.primaryGuest.email}</p>
-                  {data.additionalGuests && data.additionalGuests.length > 0 && (
-                    <p className="mt-1">+ {data.additionalGuests.length} additional guest{data.additionalGuests.length > 1 ? 's' : ''}</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <Separator />
-
-            {/* Detailed Pricing Breakdown */}
-            <div>
-              <h4 className="font-medium text-gray-900 mb-3">Pricing Breakdown</h4>
-              <div className="space-y-2 text-sm bg-gray-50 p-4 rounded-lg">
-                <div className="flex justify-between">
-                  <span>Room charges ({data.totalNights} nights)</span>
-                  <span>{formattedPricing?.roomCharges}</span>
-                </div>
-                
-                {formattedPricing?.extraBedCharges && (
-                  <div className="flex justify-between">
-                    <span>Extra bed charges</span>
-                    <span>{formattedPricing.extraBedCharges}</span>
-                  </div>
-                )}
-                
-                {formattedPricing?.additionalCharges && (
-                  <div className="flex justify-between">
-                    <span>Additional charges</span>
-                    <span>{formattedPricing.additionalCharges}</span>
-                  </div>
-                )}
-                
-                <div className="flex justify-between font-medium border-t pt-2">
-                  <span>Subtotal</span>
-                  <span>{formattedPricing?.subtotal}</span>
-                </div>
-                
-                {formattedPricing?.showGST && (
-                  <div className="flex justify-between">
-                    <span>GST (12%)</span>
-                    <span>{formattedPricing.gstAmount}</span>
-                  </div>
-                )}
-                
-                <div className="flex justify-between text-lg font-bold border-t pt-2">
-                  <span>Total Amount</span>
-                  <span className="text-green-600">{formattedPricing?.grandTotal}</span>
-                </div>
-                
-                <div className="text-xs text-gray-500 border-t pt-2">
-                  Tax Mode: {gstModeLabels[data.gstMode || 'inclusive']}
-                  {!formattedPricing?.showGST && (
-                    <span className="ml-2 text-amber-600 font-medium">• No GST Applied</span>
-                  )}
-                </div>
-              </div>
-            </div>
+    <div className="space-y-4">
+      {/* Booking summary — one concise block */}
+      <section className="rounded-lg border bg-card p-4">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Booking Summary</h2>
+        <dl className="space-y-1.5 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Room charges ({data.totalNights} night{(data.totalNights || 0) !== 1 ? 's' : ''})</dt>
+            <dd className="font-medium">{formattedPricing?.roomCharges}</dd>
           </div>
-        </CardContent>
-      </Card>
+          {formattedPricing?.extraBedCharges && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Extra bed charges</dt>
+              <dd className="font-medium">{formattedPricing.extraBedCharges}</dd>
+            </div>
+          )}
+          {formattedPricing?.additionalCharges && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Additional charges</dt>
+              <dd className="font-medium">{formattedPricing.additionalCharges}</dd>
+            </div>
+          )}
+          {formattedPricing?.showGST && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">GST (12%)</dt>
+              <dd className="font-medium">{formattedPricing.gstAmount}</dd>
+            </div>
+          )}
+          <div className="flex justify-between border-t pt-1.5 text-base font-semibold">
+            <dt>Total</dt>
+            <dd>{formattedPricing?.grandTotal}</dd>
+          </div>
+        </dl>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {gstModeLabels[data.gstMode || 'inclusive']}
+        </p>
+      </section>
 
-      {/* Payment Method Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="w-5 h-5" />
-            Payment Method
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {paymentMethods.map((method) => {
-              const IconComponent = method.icon;
-              const isSelected = data.paymentMethod === method.value;
-              
-              return (
-                <Card
-                  key={method.value}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-                  }`}
-                  onClick={() => handlePaymentMethodChange(method.value)}
+      {/* Payment entry */}
+      <section className="rounded-lg border bg-card p-4 space-y-4">
+        <h2 className="text-sm font-semibold text-foreground">Payment</h2>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Payment method dropdown */}
+          <div className="space-y-1.5">
+            <Label htmlFor="payment-method" className="text-xs">Payment Method</Label>
+            <Select
+              value={data.paymentMethod || ''}
+              onValueChange={(v) => handlePaymentMethodChange(v as PaymentMethod)}
+            >
+              <SelectTrigger id="payment-method" className="w-full">
+                <SelectValue placeholder="Select method" />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentMethods.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Amount input with quick helpers */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="payment-amount" className="text-xs">Amount Paid</Label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setQuickAmount(totalAmount)}
+                  className="rounded border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted"
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <IconComponent className={`w-6 h-6 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
-                      <div className="flex-1">
-                        <h4 className={`font-medium ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
-                          {method.label}
-                        </h4>
-                        <p className={`text-sm ${isSelected ? 'text-blue-700' : 'text-gray-600'}`}>
-                          {method.description}
-                        </p>
-                      </div>
-                      {isSelected && (
-                        <CheckCircle className="w-5 h-5 text-blue-600" />
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Reference Number (if required) */}
-          {selectedMethod?.requiresReference && (
-            <div className="mt-4">
-              <Label htmlFor="referenceNumber">
-                Transaction Reference Number *
-                <span className="text-sm text-gray-500 ml-1">(Required for {selectedMethod.label})</span>
-              </Label>
+                  Full
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickAmount(advanceAmount)}
+                  className="rounded border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  Advance 30%
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <IndianRupee className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
-                id="referenceNumber"
-                placeholder="Enter transaction reference number"
-                value={data.referenceNumber || ''}
-                onChange={(e) => onDataChange({ referenceNumber: e.target.value })}
-                className="mt-1"
-                required
+                id="payment-amount"
+                type="number"
+                min={0}
+                max={totalAmount}
+                step="1"
+                value={amountInput}
+                onChange={(e) => handleAmountChange(e.target.value)}
+                className="pl-8"
               />
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Payment Amount */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="w-5 h-5" />
-            Payment Amount
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Payment Type Selection */}
-          <div>
-            <Label className="text-base font-medium">Payment Type</Label>
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-              {[
-                { value: 'full', label: 'Full Payment', description: `Pay complete amount (₹${totalAmount.toLocaleString('en-IN')})` },
-                { value: 'advance', label: 'Advance Payment', description: `Pay 30% advance (₹${Math.round(totalAmount * 0.3).toLocaleString('en-IN')})` },
-                { value: 'partial', label: 'Custom Amount', description: 'Enter custom payment amount' }
-              ].map((type) => (
-                <Card
-                  key={type.value}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    paymentType === type.value ? 'ring-2 ring-green-500 bg-green-50' : ''
-                  }`}
-                  onClick={() => handlePaymentTypeChange(type.value as PaymentType)}
-                >
-                  <CardContent className="p-3">
-                    <div className="text-center">
-                      <h4 className={`font-medium ${paymentType === type.value ? 'text-green-900' : 'text-gray-900'}`}>
-                        {type.label}
-                      </h4>
-                      <p className={`text-xs mt-1 ${paymentType === type.value ? 'text-green-700' : 'text-gray-600'}`}>
-                        {type.description}
-                      </p>
-                      {paymentType === type.value && (
-                        <CheckCircle className="w-4 h-4 text-green-600 mx-auto mt-2" />
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
           </div>
+        </div>
 
-          {/* Custom Amount Input */}
-          {paymentType === 'partial' && (
-            <div>
-              <Label htmlFor="customAmount">Custom Payment Amount</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="relative flex-1">
-                  <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  <Input
-                    id="customAmount"
-                    type="number"
-                    min="0"
-                    max={totalAmount}
-                    step="1"
-                    placeholder="0"
-                    value={customAmount}
-                    onChange={(e) => handleCustomAmountChange(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setCustomAmount(totalAmount.toString());
-                    onDataChange({ paymentAmount: totalAmount });
-                  }}
-                >
-                  Max
-                </Button>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Maximum amount: ₹{totalAmount.toLocaleString('en-IN')}
-              </p>
-            </div>
-          )}
-
-          {/* Payment Summary */}
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Total booking amount:</span>
-                <span className="font-medium">₹{totalAmount.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Payment amount:</span>
-                <span className="font-medium text-green-600">₹{(data.paymentAmount || 0).toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between border-t pt-2">
-                <span>Due amount:</span>
-                <span className={`font-medium ${dueAmount > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                  ₹{dueAmount.toLocaleString('en-IN')}
-                </span>
-              </div>
-            </div>
-            
-            {/* Payment Status Badge */}
-            <div className="mt-3">
-              <Badge 
-                variant={paymentStatus === 'paid' ? 'default' : paymentStatus === 'partial' ? 'secondary' : 'outline'}
-                className={
-                  paymentStatus === 'paid' ? 'bg-green-600' : 
-                  paymentStatus === 'partial' ? 'bg-orange-500' : 'bg-gray-500'
-                }
-              >
-                {paymentStatus === 'paid' ? 'Fully Paid' : 
-                 paymentStatus === 'partial' ? 'Partially Paid' : 'Payment Pending'}
-              </Badge>
-            </div>
-          </div>
-
-          {/* Payment Notes */}
-          <div>
-            <Label htmlFor="paymentNotes">Payment Notes (Optional)</Label>
-            <Textarea
-              id="paymentNotes"
-              placeholder="Add any notes about the payment (optional)"
-              value={data.paymentNotes || ''}
-              onChange={(e) => onDataChange({ paymentNotes: e.target.value })}
-              className="mt-1"
-              rows={3}
+        {/* Reference number (only when required) */}
+        {selectedMethod?.requiresReference && (
+          <div className="space-y-1.5">
+            <Label htmlFor="referenceNumber" className="text-xs">
+              Transaction Reference <span className="text-muted-foreground">(required for {selectedMethod.label})</span>
+            </Label>
+            <Input
+              id="referenceNumber"
+              placeholder="Enter reference number"
+              value={data.referenceNumber || ''}
+              onChange={(e) => onDataChange({ referenceNumber: e.target.value })}
+              required
             />
           </div>
+        )}
 
-          {/* Validation Messages */}
-          {data.paymentMethod && selectedMethod?.requiresReference && !data.referenceNumber && (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-amber-600" />
-              <p className="text-sm text-amber-800">
-                Reference number is required for {selectedMethod.label} payments
-              </p>
-            </div>
-          )}
+        {/* Compact paid/balance line */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">
+            Paid <span className="font-medium text-foreground">₹{paidAmount.toLocaleString('en-IN')}</span>
+            <span className="mx-1.5">·</span>
+            Balance{' '}
+            <span className={`font-medium ${dueAmount > 0 ? 'text-orange-600' : 'text-foreground'}`}>
+              ₹{dueAmount.toLocaleString('en-IN')}
+            </span>
+          </span>
+          <Badge
+            variant={paymentStatus === 'paid' ? 'default' : paymentStatus === 'partial' ? 'secondary' : 'outline'}
+          >
+            {paymentStatus === 'paid' ? 'Fully Paid' : paymentStatus === 'partial' ? 'Partially Paid' : 'Pending'}
+          </Badge>
+        </div>
 
-          {dueAmount > 0 && paymentStatus !== 'pending' && (
-            <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <Info className="w-4 h-4 text-blue-600" />
-              <p className="text-sm text-blue-800">
-                Remaining amount of ₹{dueAmount.toLocaleString('en-IN')} will be collected later
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* Payment notes */}
+        <div className="space-y-1.5">
+          <Label htmlFor="paymentNotes" className="text-xs">Payment Notes (optional)</Label>
+          <Textarea
+            id="paymentNotes"
+            placeholder="Add any notes about the payment"
+            value={data.paymentNotes || ''}
+            onChange={(e) => onDataChange({ paymentNotes: e.target.value })}
+            rows={2}
+          />
+        </div>
+
+        {/* Reference validation hint */}
+        {data.paymentMethod && selectedMethod?.requiresReference && !data.referenceNumber && (
+          <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            Reference number is required for {selectedMethod.label} payments.
+          </p>
+        )}
+      </section>
     </div>
   );
-} 
+}

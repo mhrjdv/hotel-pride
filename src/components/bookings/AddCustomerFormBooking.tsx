@@ -70,9 +70,14 @@ interface AddCustomerFormBookingProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccess: (customer: Customer) => void;
+  /**
+   * When true, the form renders embedded inline (no Dialog wrapper) so it can be
+   * shown directly within a wizard step. Defaults to false (modal dialog).
+   */
+  inline?: boolean;
 }
 
-export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSuccess }: AddCustomerFormBookingProps) {
+export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSuccess, inline = false }: AddCustomerFormBookingProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditMode = customer !== undefined;
 
@@ -218,22 +223,8 @@ export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSucce
     { value: 'voter_id', label: 'Voter ID' },
   ];
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditMode ? 'Edit Customer' : 'Add New Customer'}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditMode 
-              ? 'Update customer information and ID verification documents.'
-              : 'Enter customer details and upload ID verification documents.'
-            }
-          </DialogDescription>
-        </DialogHeader>
-
-        <Form {...form}>
+  const formBody = (
+    <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             {/* Personal Information */}
             <div className="space-y-4">
@@ -500,17 +491,65 @@ export function AddCustomerFormBooking({ customer, isOpen, onOpenChange, onSucce
               )}
             />
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isEditMode ? 'Update Customer' : 'Add Customer'}
-              </Button>
-            </DialogFooter>
+            {inline ? (
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isEditMode ? 'Update Customer' : 'Add Customer'}
+                </Button>
+              </div>
+            ) : (
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isEditMode ? 'Update Customer' : 'Add Customer'}
+                </Button>
+              </DialogFooter>
+            )}
           </form>
         </Form>
+  );
+
+  if (inline) {
+    if (!isOpen) return null;
+    return (
+      <div className="rounded-lg border bg-white p-4 sm:p-6">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold text-gray-900">
+            {isEditMode ? 'Edit Customer' : 'Add New Customer'}
+          </h3>
+          <p className="text-sm text-gray-600">
+            {isEditMode
+              ? 'Update customer information and ID verification documents.'
+              : 'Enter customer details and upload ID verification documents.'}
+          </p>
+        </div>
+        {formBody}
+      </div>
+    );
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {isEditMode ? 'Edit Customer' : 'Add New Customer'}
+          </DialogTitle>
+          <DialogDescription>
+            {isEditMode
+              ? 'Update customer information and ID verification documents.'
+              : 'Enter customer details and upload ID verification documents.'
+            }
+          </DialogDescription>
+        </DialogHeader>
+        {formBody}
       </DialogContent>
     </Dialog>
   );

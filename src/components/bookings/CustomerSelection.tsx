@@ -2,19 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Search, Plus, User, Phone, Mail, MapPin, CreditCard } from '@/components/icons';
+import { Search, Plus, User } from '@/components/icons';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Database } from '@/lib/supabase/types';
 import { toast } from 'sonner';
+import { AddCustomerFormBooking } from './AddCustomerFormBooking';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 
 interface CustomerSelectionProps {
   onCustomerSelect: (customer: Customer) => void;
   showCreateNew?: boolean;
+  /**
+   * Optional override for the "New Customer" action. When omitted, CustomerSelection
+   * reveals an inline embedded new-customer form within the section itself.
+   */
   onCreateNew?: () => void;
   excludeCustomerIds?: string[];
 }
@@ -38,6 +42,25 @@ export function CustomerSelection({
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showInlineForm, setShowInlineForm] = useState(false);
+
+  // If no custom handler is provided, manage an inline embedded new-customer form.
+  const useInlineForm = !onCreateNew;
+
+  const handleCreateNewClick = () => {
+    if (onCreateNew) {
+      onCreateNew();
+    } else {
+      setShowInlineForm(true);
+    }
+  };
+
+  const handleInlineCustomerCreated = (customer: Customer) => {
+    setShowInlineForm(false);
+    // Refresh the list so the new customer is available for future selections.
+    fetchCustomers();
+    onCustomerSelect(customer);
+  };
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
@@ -92,10 +115,24 @@ export function CustomerSelection({
     );
   }
 
+  // Inline embedded new-customer form replaces the search UI while open.
+  if (useInlineForm && showInlineForm) {
+    return (
+      <AddCustomerFormBooking
+        inline
+        isOpen
+        onOpenChange={(open) => {
+          if (!open) setShowInlineForm(false);
+        }}
+        onSuccess={handleInlineCustomerCreated}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Search Header */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
@@ -103,10 +140,11 @@ export function CustomerSelection({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
+            aria-label="Search customers"
           />
         </div>
         {showCreateNew && (
-          <Button onClick={onCreateNew} variant="outline">
+          <Button onClick={handleCreateNewClick} variant="outline" className="sm:w-auto w-full">
             <Plus className="w-4 h-4 mr-2" />
             New Customer
           </Button>
@@ -114,94 +152,62 @@ export function CustomerSelection({
       </div>
 
       {/* Results */}
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {filteredCustomers.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <User className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-            <p className="text-lg font-medium mb-2">
-              {searchTerm ? 'No customers found' : 'No customers available'}
-            </p>
-            <p className="text-sm">
-              {searchTerm ? 'Try adjusting your search terms' : 'Start by creating a new customer'}
-            </p>
-            {showCreateNew && (
-              <Button onClick={onCreateNew} className="mt-4">
-                <Plus className="w-4 h-4 mr-2" />
-                Create New Customer
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-2">
+      {filteredCustomers.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 border rounded-lg">
+          <User className="w-10 h-10 mx-auto text-gray-400 mb-3" />
+          <p className="text-base font-medium mb-1">
+            {searchTerm ? 'No customers found' : 'No customers available'}
+          </p>
+          <p className="text-sm">
+            {searchTerm ? 'Try adjusting your search terms' : 'Start by creating a new customer'}
+          </p>
+          {showCreateNew && (
+            <Button onClick={handleCreateNewClick} className="mt-4">
+              <Plus className="w-4 h-4 mr-2" />
+              Create New Customer
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          <ul
+            className="divide-y max-h-72 overflow-y-auto"
+            role="listbox"
+            aria-label="Customer search results"
+          >
             {filteredCustomers.map((customer) => (
-              <Card 
-                key={customer.id} 
-                className="cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-blue-500"
-                onClick={() => onCustomerSelect(customer)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {customer.name}
-                        </h3>
-                        <Badge variant="outline" className="text-xs">
-                          {idTypeLabels[customer.id_type]}
-                        </Badge>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{customer.phone}</span>
-                        </div>
-                        
-                        {customer.email && (
-                          <div className="flex items-center gap-1">
-                            <Mail className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{customer.email}</span>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center gap-1">
-                          <CreditCard className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{customer.id_number}</span>
-                        </div>
-                        
-                        {customer.city && customer.state && (
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{customer.city}, {customer.state}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="ml-2 flex-shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCustomerSelect(customer);
-                      }}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <li key={customer.id} role="option" aria-selected={false}>
+                <button
+                  type="button"
+                  onClick={() => onCustomerSelect(customer)}
+                  className="w-full text-left px-3 py-2.5 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none transition-colors flex items-center justify-between gap-3"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900 truncate">{customer.name}</span>
+                      <Badge variant="outline" className="text-xs flex-shrink-0">
+                        {idTypeLabels[customer.id_type]}
+                      </Badge>
+                    </span>
+                    <span className="block text-xs text-gray-500 truncate">
+                      {customer.phone}
+                      {customer.email ? ` • ${customer.email}` : ''}
+                      {customer.city ? ` • ${customer.city}` : ''}
+                    </span>
+                  </span>
+                  <span className="text-xs font-medium text-blue-600 flex-shrink-0">Select</span>
+                </button>
+              </li>
             ))}
-          </div>
-        )}
-      </div>
+          </ul>
+        </div>
+      )}
 
       {filteredCustomers.length > 0 && (
-        <div className="text-center text-sm text-gray-500 pt-2 border-t">
+        <p className="text-xs text-gray-500">
           Showing {filteredCustomers.length} customer{filteredCustomers.length !== 1 ? 's' : ''}
           {searchTerm && ` matching "${searchTerm}"`}
-        </div>
+        </p>
       )}
     </div>
   );

@@ -66,6 +66,16 @@ const computeNights = (checkIn?: string, checkOut?: string): number => {
 const getRoomRate = (room: RoomTable, acPreference: boolean): number =>
   acPreference ? (room.ac_rate ?? room.current_rate) : (room.non_ac_rate ?? room.current_rate);
 
+// All room types we can search across when a search term overrides the type filter.
+const ALL_ROOM_TYPES = ['double-bed-deluxe', 'executive-3bed', 'vip'] as const;
+
+// Stable display order for grouped room-type sub-sections.
+const ROOM_TYPE_ORDER: Record<string, number> = {
+  'double-bed-deluxe': 0,
+  'executive-3bed': 1,
+  'vip': 2,
+};
+
 const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange }) => {
   const { info, error: logError, bookingAction } = useLogger('RoomSelection');
   const [availableRooms, setAvailableRooms] = useState<RoomTable[]>([]);
@@ -74,7 +84,11 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [defaultsSet, setDefaultsSet] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // When a search term is present it overrides the room-type filter and we search every type.
+  const isSearching = debouncedSearch.trim().length > 0;
 
   // Create Supabase client only once to avoid recreating on every render (prevents effect loops)
   const supabase = useMemo(() => createClient(), []);
@@ -124,25 +138,39 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
       const formatTime = (time: string) =>
         time.includes(':') && time.split(':').length === 2 ? `${time}:00` : time;
 
-      const params = {
+      const baseParams = {
         p_check_in_date: checkInDate,
         p_check_in_time: formatTime(checkInTime),
         p_check_out_date: checkOutDate,
         p_check_out_time: formatTime(checkOutTime),
-        p_room_type: roomType,
       };
 
-      const { data, error } = await supabase.rpc('get_available_rooms', params);
+      // When searching, the type filter is overridden — fetch every room type and merge.
+      // Otherwise just fetch the currently selected room type.
+      const typesToFetch = isSearching ? ALL_ROOM_TYPES : [roomType];
 
-      if (error) {
-        logError('Failed to fetch available rooms', error);
-        setFetchError(error.message || 'Failed to fetch available rooms.');
+      const results = await Promise.all(
+        typesToFetch.map((type) =>
+          supabase.rpc('get_available_rooms', { ...baseParams, p_room_type: type }),
+        ),
+      );
+
+      const firstError = results.find((r) => r.error)?.error;
+      if (firstError) {
+        logError('Failed to fetch available rooms', firstError);
+        setFetchError(firstError.message || 'Failed to fetch available rooms.');
         setAvailableRooms([]);
-      } else {
-        const fetchedRooms = (data as RoomTable[]) || [];
-        info(`Fetched ${fetchedRooms.length} rooms`);
-        setAvailableRooms(fetchedRooms);
+        return;
       }
+
+      // Merge and de-duplicate by room id across types.
+      const byId = new Map<string, RoomTable>();
+      results.forEach((r) => {
+        ((r.data as RoomTable[]) || []).forEach((room) => byId.set(room.id, room));
+      });
+      const fetchedRooms = Array.from(byId.values());
+      info(`Fetched ${fetchedRooms.length} rooms`);
+      setAvailableRooms(fetchedRooms);
     } catch (err) {
       logError('Unexpected error fetching rooms', err);
       setFetchError('An unexpected error occurred while fetching rooms.');
@@ -150,11 +178,17 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
     } finally {
       setIsLoading(false);
     }
-  }, [checkInDate, checkInTime, checkOutDate, checkOutTime, roomType, supabase, info, logError]);
+  }, [checkInDate, checkInTime, checkOutDate, checkOutTime, roomType, isSearching, supabase, info, logError]);
 
   // Debounced refetch when params change so rapid edits don't spam the RPC.
   const fetchRef = useRef(fetchAvailableRooms);
   fetchRef.current = fetchAvailableRooms;
+
+  // Debounce the search term so toggling between filtered/all-types fetch doesn't spam the RPC.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
 
   useEffect(() => {
     if (!defaultsSet) return;
@@ -166,7 +200,7 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
     }, 300);
 
     return () => clearTimeout(handle);
-  }, [defaultsSet, checkInDate, checkInTime, checkOutDate, checkOutTime, roomType]);
+  }, [defaultsSet, checkInDate, checkInTime, checkOutDate, checkOutTime, roomType, isSearching]);
 
   // Clear the selected room if it is no longer in the available list.
   useEffect(() => {
@@ -280,10 +314,26 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
   const totalGuests = (bookingData.adults || 1) + (bookingData.children || 0);
 
   const filteredRooms = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     if (!q) return availableRooms;
     return availableRooms.filter((r) => r.room_number.toLowerCase().includes(q));
-  }, [availableRooms, search]);
+  }, [availableRooms, debouncedSearch]);
+
+  // Group the visible rooms by type so the user picks within Double Bed Deluxe / Executive 3-Bed / VIP.
+  const groupedRooms = useMemo(() => {
+    const groups = new Map<string, RoomTable[]>();
+    filteredRooms.forEach((room) => {
+      const list = groups.get(room.room_type) ?? [];
+      list.push(room);
+      groups.set(room.room_type, list);
+    });
+    return Array.from(groups.entries())
+      .sort((a, b) => (ROOM_TYPE_ORDER[a[0]] ?? 99) - (ROOM_TYPE_ORDER[b[0]] ?? 99))
+      .map(([type, rooms]) => ({
+        type,
+        rooms: rooms.slice().sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true })),
+      }));
+  }, [filteredRooms]);
 
   const maxExtraBeds = selectedRoom ? Math.max(0, selectedRoom.max_occupancy - totalGuests) : 0;
   const showExtraBeds = !!selectedRoom && !!selectedRoom.allow_extra_bed && maxExtraBeds > 0;
@@ -480,67 +530,84 @@ const RoomSelection: React.FC<RoomSelectionProps> = ({ bookingData, onDataChange
           </div>
         ) : filteredRooms.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
-            No rooms match &ldquo;{search}&rdquo;.
+            No rooms match &ldquo;{debouncedSearch}&rdquo;.
           </div>
         ) : (
-          <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-0.5" role="listbox" aria-label="Available rooms">
-            {filteredRooms.map((room) => {
-              const isSelected = selectedRoom?.id === room.id;
-              const rate = getRoomRate(room, acPreference);
-              const fitsGuests = room.max_occupancy >= totalGuests;
-              return (
-                <li key={room.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => handleRoomChange(room.id)}
-                    className={`flex w-full items-center gap-3 rounded-md border p-2.5 text-left transition-colors ${
-                      isSelected
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                        : 'hover:border-muted-foreground/40 hover:bg-muted/50'
-                    }`}
-                  >
-                    <div
-                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
-                        isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
-                      }`}
-                      aria-hidden="true"
-                    >
-                      {isSelected && <Check className="h-3 w-3" />}
-                    </div>
+          <div className="max-h-72 space-y-3 overflow-y-auto pr-0.5">
+            {isSearching && (
+              <p className="text-xs text-muted-foreground">
+                Showing matches across all room types for &ldquo;{debouncedSearch}&rdquo;.
+              </p>
+            )}
+            {groupedRooms.map((group) => (
+              <div key={group.type} className="space-y-1.5">
+                <div className="flex items-center justify-between px-0.5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {getRoomTypeLabel(group.type)}
+                  </h3>
+                  <span className="text-[10px] text-muted-foreground">{group.rooms.length}</span>
+                </div>
+                <ul className="space-y-1.5" role="listbox" aria-label={`Available ${getRoomTypeLabel(group.type)} rooms`}>
+                  {group.rooms.map((room) => {
+                    const isSelected = selectedRoom?.id === room.id;
+                    const rate = getRoomRate(room, acPreference);
+                    const fitsGuests = room.max_occupancy >= totalGuests;
+                    return (
+                      <li key={room.id}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => handleRoomChange(room.id)}
+                          className={`flex w-full items-center gap-3 rounded-md border p-2.5 text-left transition-colors ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                              : 'hover:border-muted-foreground/40 hover:bg-muted/50'
+                          }`}
+                        >
+                          <div
+                            className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
+                              isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {isSelected && <Check className="h-3 w-3" />}
+                          </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground">Room {room.room_number}</span>
-                        <span className="truncate text-xs text-muted-foreground">{getRoomTypeLabel(room.room_type)}</span>
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <UsersIcon className="h-3 w-3" aria-hidden="true" />
-                          Max {room.max_occupancy}
-                        </span>
-                        {room.allow_extra_bed && (
-                          <Badge variant="outline" className="h-4 px-1 text-[10px] font-normal">
-                            <BedDouble className="mr-0.5 h-2.5 w-2.5" aria-hidden="true" />
-                            Extra bed
-                          </Badge>
-                        )}
-                        {!fitsGuests && (
-                          <span className="text-[10px] font-medium text-amber-600">Over capacity</span>
-                        )}
-                      </div>
-                    </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-foreground">Room {room.room_number}</span>
+                              <span className="truncate text-xs text-muted-foreground">{getRoomTypeLabel(room.room_type)}</span>
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+                              <span className="inline-flex items-center gap-1">
+                                <UsersIcon className="h-3 w-3" aria-hidden="true" />
+                                Max {room.max_occupancy}
+                              </span>
+                              {room.allow_extra_bed && (
+                                <Badge variant="outline" className="h-4 px-1 text-[10px] font-normal">
+                                  <BedDouble className="mr-0.5 h-2.5 w-2.5" aria-hidden="true" />
+                                  Extra bed
+                                </Badge>
+                              )}
+                              {!fitsGuests && (
+                                <span className="text-[10px] font-medium text-amber-600">Over capacity</span>
+                              )}
+                            </div>
+                          </div>
 
-                    <div className="flex-shrink-0 text-right">
-                      <div className="text-sm font-semibold text-foreground">₹{rate}</div>
-                      <div className="text-[10px] text-muted-foreground">/night</div>
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                          <div className="flex-shrink-0 text-right">
+                            <div className="text-sm font-semibold text-foreground">₹{rate}</div>
+                            <div className="text-[10px] text-muted-foreground">/night</div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
