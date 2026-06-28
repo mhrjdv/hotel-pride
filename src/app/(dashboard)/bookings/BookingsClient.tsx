@@ -14,6 +14,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { BookingWizard } from '@/components/bookings/BookingWizard';
 import { BookingEditor } from '@/components/bookings/BookingEditor';
 import {
@@ -75,6 +83,9 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<FullBooking | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  // Outstanding-balance checkout dialog state
+  const [checkoutBooking, setCheckoutBooking] = useState<Booking | null>(null);
+  const [checkoutProcessing, setCheckoutProcessing] = useState(false);
 
   // Open the wizard directly when arriving from "New booking" elsewhere
   // (e.g. the dashboard) via /bookings?new=1, and honour ?filter=.
@@ -277,7 +288,16 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
     }
   };
 
-  const handleCheckOut = async (bookingId: string) => {
+  // Outstanding balance for a booking (defensive: derive from total - paid
+  // when due_amount is missing/stale, and never go negative).
+  const getDueAmount = (booking: Booking): number => {
+    const due = booking.due_amount ?? (booking.total_amount - booking.paid_amount);
+    return Math.max(0, due);
+  };
+
+  // Persist the actual check-out for a booking. Used directly when nothing is
+  // owed, and after settling the balance from the outstanding-balance dialog.
+  const performCheckOut = async (bookingId: string): Promise<boolean> => {
     const { error } = await supabase
       .from('bookings')
       .update({
@@ -288,10 +308,81 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
 
     if (error) {
       toast.error('Failed to check out guest');
-    } else {
-      toast.success('Guest checked out successfully');
-      fetchBookings();
+      return false;
     }
+    toast.success('Guest checked out successfully');
+    fetchBookings();
+    return true;
+  };
+
+  const handleCheckOut = async (bookingId: string) => {
+    const booking = bookings.find(b => b.id === bookingId);
+    // If we can't resolve the booking or nothing is owed, check out directly.
+    if (!booking || getDueAmount(booking) <= 0) {
+      await performCheckOut(bookingId);
+      return;
+    }
+    // Balance remaining: ask how to settle before checking out.
+    setCheckoutBooking(booking);
+  };
+
+  // Settle a remaining balance by recording it as fully paid, then check out.
+  // Safe against the DB CHECKs: paid_amount = total_amount, due_amount = 0,
+  // total_amount left untouched.
+  const handleCollectPayment = async () => {
+    if (!checkoutBooking) return;
+    const booking = checkoutBooking;
+    setCheckoutProcessing(true);
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        paid_amount: booking.total_amount,
+        due_amount: 0,
+        payment_status: 'paid',
+      })
+      .eq('id', booking.id);
+
+    if (error) {
+      toast.error('Failed to record payment');
+      setCheckoutProcessing(false);
+      return;
+    }
+    toast.success(`Payment of ₹${getDueAmount(booking).toLocaleString('en-IN')} collected`);
+    const ok = await performCheckOut(booking.id);
+    setCheckoutProcessing(false);
+    if (ok) setCheckoutBooking(null);
+  };
+
+  // Waive the remaining balance: mark it settled and append an auditable note.
+  // total_amount is left untouched to keep the base/discount/gst CHECK valid.
+  const handleWaiveBalance = async () => {
+    if (!checkoutBooking) return;
+    const booking = checkoutBooking;
+    const due = getDueAmount(booking);
+    setCheckoutProcessing(true);
+    const waiverNote = `Balance ₹${due.toLocaleString('en-IN')} waived at checkout`;
+    const note = booking.special_requests
+      ? `${booking.special_requests}\n${waiverNote}`
+      : waiverNote;
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        paid_amount: booking.total_amount,
+        due_amount: 0,
+        payment_status: 'paid',
+        special_requests: note,
+      })
+      .eq('id', booking.id);
+
+    if (error) {
+      toast.error('Failed to waive balance');
+      setCheckoutProcessing(false);
+      return;
+    }
+    toast.success(`Balance of ₹${due.toLocaleString('en-IN')} waived`);
+    const ok = await performCheckOut(booking.id);
+    setCheckoutProcessing(false);
+    if (ok) setCheckoutBooking(null);
   };
 
   // Reverse an accidental check-in (back to confirmed) and free the room.
@@ -879,6 +970,69 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
           onUpdate={handleBookingUpdate}
         />
       )}
+
+      {/* Outstanding Balance Checkout Dialog */}
+      <Dialog
+        open={!!checkoutBooking}
+        onOpenChange={(open) => {
+          if (!open && !checkoutProcessing) setCheckoutBooking(null);
+        }}
+      >
+        <DialogContent showCloseButton={!checkoutProcessing}>
+          <DialogHeader>
+            <DialogTitle>
+              Outstanding balance ₹{checkoutBooking ? getDueAmount(checkoutBooking).toLocaleString('en-IN') : '0'}
+            </DialogTitle>
+            <DialogDescription>
+              {checkoutBooking?.customers?.name
+                ? `${checkoutBooking.customers.name} has a balance remaining on booking ${checkoutBooking.booking_number}. `
+                : ''}
+              Choose how to settle it before checking out.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total</span>
+              <span className="font-medium">
+                ₹{checkoutBooking?.total_amount.toLocaleString('en-IN') ?? '0'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Paid</span>
+              <span className="font-medium">
+                ₹{checkoutBooking?.paid_amount.toLocaleString('en-IN') ?? '0'}
+              </span>
+            </div>
+            <div className="flex justify-between border-t pt-2">
+              <span className="text-gray-600">Balance due</span>
+              <span className="font-semibold text-red-600">
+                ₹{checkoutBooking ? getDueAmount(checkoutBooking).toLocaleString('en-IN') : '0'}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="sm:flex-col sm:items-stretch sm:gap-2">
+            <Button onClick={handleCollectPayment} disabled={checkoutProcessing}>
+              Collect payment
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleWaiveBalance}
+              disabled={checkoutProcessing}
+            >
+              Waive / discount balance
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setCheckoutBooking(null)}
+              disabled={checkoutProcessing}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-} 
+}

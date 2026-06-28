@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Hotel, BedDouble, CalendarCheck, CalendarX2, IndianRupee, Wallet, Plus, ArrowRight } from '@/components/icons';
 import { Database } from '@/lib/supabase/types';
+import { RoomStatusGrid } from '@/components/dashboard/RoomStatusGrid';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 
@@ -46,13 +47,6 @@ export function DashboardClient({ stats, initialRooms }: DashboardClientProps) {
     { label: 'Pending Payments', value: String(stats.pendingPayments), icon: Wallet },
   ];
 
-  const statusPills = [
-    { label: 'Available', value: roomCounts.available, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    { label: 'Occupied', value: roomCounts.occupied, cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-    { label: 'Cleaning', value: roomCounts.cleaning, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-    { label: 'Maintenance', value: roomCounts.maintenance, cls: 'bg-slate-50 text-slate-700 border-slate-200' },
-  ];
-
   return (
     <div className="space-y-6">
       {/* Quick actions */}
@@ -86,19 +80,18 @@ export function DashboardClient({ stats, initialRooms }: DashboardClientProps) {
       {/* Room status overview */}
       <Card>
         <CardContent className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">Room status</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold">Room status</h2>
+              <p className="text-sm text-muted-foreground">
+                {roomCounts.available} available · {roomCounts.occupied} occupied
+              </p>
+            </div>
             <Button variant="ghost" size="sm" onClick={() => router.push('/rooms')}>
               Manage rooms <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {statusPills.map((s) => (
-              <span key={s.label} className={`rounded-full border px-3 py-1 text-sm font-medium ${s.cls}`}>
-                {s.label}: {s.value}
-              </span>
-            ))}
-          </div>
+          <RoomStatusGrid rooms={initialRooms} />
         </CardContent>
       </Card>
     </div>

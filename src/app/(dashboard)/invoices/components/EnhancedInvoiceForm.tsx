@@ -32,20 +32,29 @@ import {
   BUFFET_TYPES
 } from '@/lib/types/invoice';
 import { calculateInvoiceTotal, formatCurrency } from '@/lib/utils/invoice-calculations';
+import { getHsnSac, suggestRoomGstRate } from './invoice-display-helpers';
+import { createClient } from '@/lib/supabase/client';
 import InvoiceLivePreview from './InvoiceLivePreview';
 
 interface EnhancedInvoiceFormProps {
   initialData?: Partial<InvoiceFormData>;
   invoiceId?: string;
   mode?: 'create' | 'edit';
+  bookingId?: string;
+  customerId?: string;
 }
 
-export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'create' }: EnhancedInvoiceFormProps) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BookingRow = any;
+
+export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'create', bookingId, customerId }: EnhancedInvoiceFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [hotelConfig, setHotelConfig] = useState<HotelConfig | null>(null);
   const [customItemTypes, setCustomItemTypes] = useState<CustomItemType[]>([]);
   const [previewMode, setPreviewMode] = useState<'split' | 'form' | 'preview'>('split');
+  const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [linkedBookingNumber, setLinkedBookingNumber] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<InvoiceFormData>({
     invoice_date: new Date().toISOString().split('T')[0],
@@ -133,6 +142,121 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
     loadData();
   }, []);
 
+  // Apply a booking to the form: prefill customer + a room-charges line item.
+  const applyBooking = (booking: BookingRow) => {
+    if (!booking) return;
+    const customer = booking.customers || booking.customer || {};
+    const room = booking.rooms || booking.room || {};
+    const nights = booking.total_nights || 1;
+    const rate = booking.room_rate || 0;
+    const roomGst = suggestRoomGstRate(rate);
+
+    setLinkedBookingNumber(booking.booking_number || null);
+
+    setFormData(prev => ({
+      ...prev,
+      booking_id: booking.id,
+      customer_type: 'individual',
+      customer_id: customer.id || prev.customer_id,
+      customer_name: customer.name || prev.customer_name,
+      customer_email: customer.email || prev.customer_email,
+      customer_phone: customer.phone || prev.customer_phone,
+      customer_address: [customer.address_line1, customer.address_line2].filter(Boolean).join(', ') || prev.customer_address,
+      customer_city: customer.city || prev.customer_city,
+      customer_state: customer.state || prev.customer_state,
+      customer_pincode: customer.pin_code || prev.customer_pincode,
+      line_items: [
+        {
+          item_type: 'room',
+          description: `Room Charges${room.room_number ? ` - Room ${room.room_number}` : ''}${booking.check_in_date ? ` (${booking.check_in_date} to ${booking.check_out_date})` : ''}`,
+          quantity: nights,
+          unit_price: rate,
+          gst_rate: roomGst,
+          gst_inclusive: booking.gst_mode === 'inclusive',
+          gst_name: 'GST',
+          discount_rate: 0,
+          is_buffet_item: false,
+          persons_count: 1,
+          price_per_person: 0,
+          sort_order: 0,
+        },
+        // Extra bed line, if any
+        ...((booking.extra_bed_count || 0) > 0
+          ? [{
+              item_type: 'extra' as const,
+              description: 'Extra Bed Charges',
+              quantity: booking.extra_bed_count,
+              unit_price: booking.extra_bed_rate || 0,
+              gst_rate: roomGst,
+              gst_inclusive: booking.gst_mode === 'inclusive',
+              gst_name: 'GST',
+              discount_rate: 0,
+              is_buffet_item: false,
+              persons_count: 1,
+              price_per_person: 0,
+              sort_order: 1,
+            }]
+          : []),
+      ],
+    }));
+  };
+
+  // Load recent bookings (for the picker) and prefill from ?bookingId / ?customerId.
+  useEffect(() => {
+    if (mode !== 'create') return;
+    const supabase = createClient();
+
+    const loadBookings = async () => {
+      const { data } = await supabase
+        .from('bookings')
+        .select(`*, rooms (room_number, room_type), customers:primary_customer_id (*)`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      const list = data || [];
+      setBookings(list);
+
+      if (bookingId) {
+        const match = list.find((b: BookingRow) => b.id === bookingId);
+        if (match) {
+          applyBooking(match);
+        } else {
+          // Booking not in the recent list — fetch it directly.
+          const { data: single } = await supabase
+            .from('bookings')
+            .select(`*, rooms (room_number, room_type), customers:primary_customer_id (*)`)
+            .eq('id', bookingId)
+            .single();
+          if (single) applyBooking(single);
+        }
+      }
+    };
+
+    const loadCustomer = async () => {
+      if (!customerId || bookingId) return;
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customerId)
+        .single();
+      if (customer) {
+        setFormData(prev => ({
+          ...prev,
+          customer_id: customer.id,
+          customer_name: customer.name || prev.customer_name,
+          customer_email: customer.email || prev.customer_email,
+          customer_phone: customer.phone || prev.customer_phone,
+          customer_address: [customer.address_line1, customer.address_line2].filter(Boolean).join(', ') || prev.customer_address,
+          customer_city: customer.city || prev.customer_city,
+          customer_state: customer.state || prev.customer_state,
+          customer_pincode: customer.pin_code || prev.customer_pincode,
+        }));
+      }
+    };
+
+    loadBookings();
+    loadCustomer();
+  }, [mode, bookingId, customerId]);
+
   const handleInputChange = (field: keyof InvoiceFormData, value: string | number | boolean | string[]) => {
     setFormData(prev => ({
       ...prev,
@@ -177,6 +301,11 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
             if (customType) {
               updatedItem.gst_rate = customType.default_gst_rate;
               updatedItem.item_type = 'custom';
+              // Prefill description with the type name if blank, so users can
+              // quickly invoice transportation/laundry/buffet/etc.
+              if (!updatedItem.description.trim()) {
+                updatedItem.description = customType.name;
+              }
             }
           }
 
@@ -354,6 +483,54 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
         {/* Form Section */}
         {(previewMode === 'split' || previewMode === 'form') && (
           <div className="space-y-6">
+            {/* Start from a booking */}
+            {mode === 'create' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Start from a Booking
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="booking-picker">
+                    Prefill customer &amp; room charges from an existing booking (optional)
+                  </Label>
+                  <Select
+                    value={formData.booking_id || 'none'}
+                    onValueChange={(value) => {
+                      if (value === 'none') {
+                        setLinkedBookingNumber(null);
+                        setFormData(prev => ({ ...prev, booking_id: undefined }));
+                        return;
+                      }
+                      const booking = bookings.find(b => b.id === value);
+                      if (booking) applyBooking(booking);
+                    }}
+                  >
+                    <SelectTrigger id="booking-picker">
+                      <SelectValue placeholder="Select a booking (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Manual invoice (no booking)</SelectItem>
+                      {bookings.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.booking_number}
+                          {b.customers?.name ? ` • ${b.customers.name}` : ''}
+                          {b.rooms?.room_number ? ` • Room ${b.rooms.room_number}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {linkedBookingNumber && (
+                    <p className="text-sm text-green-600">
+                      Linked to booking {linkedBookingNumber}. Customer &amp; room charges prefilled — you can still edit or add line items below.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Invoice Type & Basic Info */}
             <Card>
               <CardHeader>
@@ -551,7 +728,17 @@ export default function EnhancedInvoiceForm({ initialData, invoiceId, mode = 'cr
                 {formData.line_items.map((item, index) => (
                   <div key={index} className="p-4 border rounded-lg space-y-4">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Item {index + 1}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">Item {index + 1}</h4>
+                        <Badge variant="outline" className="text-xs font-normal">
+                          HSN/SAC: {getHsnSac({
+                            item_type: item.item_type,
+                            custom_item_type_id: item.custom_item_type_id,
+                            description: item.description,
+                            custom_item_type_name: customItemTypes.find(t => t.id === item.custom_item_type_id)?.name,
+                          })}
+                        </Badge>
+                      </div>
                       {formData.line_items.length > 1 && (
                         <Button
                           variant="outline"

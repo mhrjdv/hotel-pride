@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { InvoiceFormData, HotelConfig } from '@/lib/types/invoice';
 import { calculateInvoiceTotal, formatCurrency, numberToWords, calculateGSTBreakdown } from '@/lib/utils/invoice-calculations';
+import { getHsnSac, splitGst } from './invoice-display-helpers';
 
 interface InvoiceLivePreviewProps {
   formData: InvoiceFormData;
@@ -40,9 +41,11 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
       case 'proforma': return 'PROFORMA INVOICE';
       case 'estimate': return 'ESTIMATE';
       case 'quote': return 'QUOTATION';
-      default: return 'INVOICE';
+      default: return 'TAX INVOICE';
     }
   };
+
+  const placeOfSupply = formData.customer_state || hotelConfig?.state || formData.hotel_state || '';
 
   const getInvoiceTypeColor = () => {
     switch (formData.invoice_type) {
@@ -76,7 +79,10 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
                 <div>Email: {hotelConfig?.email || formData.hotel_email}</div>
               )}
               {(hotelConfig?.gst_number || formData.hotel_gst_number) && (
-                <div>GST No: {hotelConfig?.gst_number || formData.hotel_gst_number}</div>
+                <div className="font-medium text-gray-700">GSTIN: {hotelConfig?.gst_number || formData.hotel_gst_number}</div>
+              )}
+              {(hotelConfig?.state || formData.hotel_state) && (
+                <div>State: {hotelConfig?.state || formData.hotel_state}</div>
               )}
             </div>
           </div>
@@ -124,10 +130,21 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
               {formData.customer_phone && <div>Phone: {formData.customer_phone}</div>}
               {formData.customer_email && <div>Email: {formData.customer_email}</div>}
               {(formData.customer_gst_number || formData.company_gst_number) && (
-                <div>GST No: {formData.customer_gst_number || formData.company_gst_number}</div>
+                <div className="font-medium text-gray-700">GSTIN: {formData.customer_gst_number || formData.company_gst_number}</div>
               )}
+              {placeOfSupply && <div>Place of Supply: {placeOfSupply}</div>}
             </div>
           </div>
+
+          {/* Booking reference */}
+          {formData.booking_id && (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">Booking Reference</h3>
+              <div className="text-sm text-gray-600">
+                Linked to booking. Room charges prefilled from the stay.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -145,18 +162,23 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
                 <tr className="border-b">
                   <th className="text-left py-2">#</th>
                   <th className="text-left py-2">Description</th>
+                  <th className="text-left py-2">HSN/SAC</th>
                   <th className="text-center py-2">Qty</th>
                   <th className="text-right py-2">Rate</th>
-                  <th className="text-center py-2">GST%</th>
-                  <th className="text-right py-2">GST</th>
+                  <th className="text-right py-2">Taxable</th>
+                  <th className="text-right py-2">CGST</th>
+                  <th className="text-right py-2">SGST</th>
                   <th className="text-right py-2">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {formData.line_items.map((item, index) => {
                   const calculation = calculations.line_items[index];
+                  const taxAmount = calculation?.tax_amount || 0;
+                  const taxableValue = (calculation?.final_amount || 0) - taxAmount;
+                  const { cgstRate, sgstRate, cgstAmount, sgstAmount } = splitGst(taxAmount, item.gst_rate || 0);
                   return (
-                    <tr key={index} className="border-b">
+                    <tr key={index} className="border-b align-top">
                       <td className="py-3">{index + 1}</td>
                       <td className="py-3">
                         <div className="font-medium">{item.description || 'Item description'}</div>
@@ -166,10 +188,26 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
                           </div>
                         )}
                       </td>
+                      <td className="py-3 whitespace-nowrap">{getHsnSac({ item_type: item.item_type, description: item.description })}</td>
                       <td className="text-center py-3">{item.quantity}</td>
                       <td className="text-right py-3">{formatCurrency(item.unit_price)}</td>
-                      <td className="text-center py-3">{item.gst_rate}%</td>
-                      <td className="text-right py-3">{formatCurrency(calculation?.tax_amount || 0)}</td>
+                      <td className="text-right py-3">{formatCurrency(taxableValue)}</td>
+                      <td className="text-right py-3">
+                        {item.gst_rate > 0 ? (
+                          <>
+                            {formatCurrency(cgstAmount)}
+                            <div className="text-xs text-gray-500">{cgstRate}%</div>
+                          </>
+                        ) : '—'}
+                      </td>
+                      <td className="text-right py-3">
+                        {item.gst_rate > 0 ? (
+                          <>
+                            {formatCurrency(sgstAmount)}
+                            <div className="text-xs text-gray-500">{sgstRate}%</div>
+                          </>
+                        ) : '—'}
+                      </td>
                       <td className="text-right py-3 font-medium">{formatCurrency(calculation?.final_amount || 0)}</td>
                     </tr>
                   );
@@ -186,23 +224,28 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
           {/* GST Breakdown */}
           {Object.keys(gstBreakdown).length > 0 && (
             <div>
-              <h4 className="font-semibold text-gray-900 mb-3">GST Breakdown</h4>
+              <h4 className="font-semibold text-gray-900 mb-3">GST Summary</h4>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-1">GST Rate</th>
-                    <th className="text-right py-1">Taxable Amount</th>
-                    <th className="text-right py-1">GST Amount</th>
+                    <th className="text-left py-1">Rate</th>
+                    <th className="text-right py-1">Taxable</th>
+                    <th className="text-right py-1">CGST</th>
+                    <th className="text-right py-1">SGST</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(gstBreakdown).map(([rate, breakdown]) => (
-                    <tr key={rate} className="border-b">
-                      <td className="py-1">{rate}%</td>
-                      <td className="text-right py-1">{formatCurrency(breakdown.taxable_amount)}</td>
-                      <td className="text-right py-1">{formatCurrency(breakdown.tax_amount)}</td>
-                    </tr>
-                  ))}
+                  {Object.entries(gstBreakdown).map(([rate, breakdown]) => {
+                    const { cgstAmount, sgstAmount } = splitGst(breakdown.tax_amount, parseFloat(rate));
+                    return (
+                      <tr key={rate} className="border-b">
+                        <td className="py-1">{rate}%</td>
+                        <td className="text-right py-1">{formatCurrency(breakdown.taxable_amount)}</td>
+                        <td className="text-right py-1">{formatCurrency(cgstAmount)}</td>
+                        <td className="text-right py-1">{formatCurrency(sgstAmount)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -222,14 +265,20 @@ export default function InvoiceLivePreview({ formData, hotelConfig, className }:
                 </div>
               )}
               {calculations.total_tax > 0 && (
-                <div className="flex justify-between">
-                  <span>Total GST:</span>
-                  <span>{formatCurrency(calculations.total_tax)}</span>
-                </div>
+                <>
+                  <div className="flex justify-between">
+                    <span>CGST:</span>
+                    <span>{formatCurrency(Math.round((calculations.total_tax / 2) * 100) / 100)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>SGST:</span>
+                    <span>{formatCurrency(calculations.total_tax - Math.round((calculations.total_tax / 2) * 100) / 100)}</span>
+                  </div>
+                </>
               )}
               <Separator />
               <div className="flex justify-between text-lg font-bold">
-                <span>Total Amount:</span>
+                <span>Grand Total:</span>
                 <span>{formatCurrency(calculations.total_amount)}</span>
               </div>
             </div>
