@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Download, Mail, ArrowLeft } from 'lucide-react';
+import { Download, Mail, ArrowLeft } from '@/components/icons';
 import { InvoiceFormData, HotelConfig } from '@/lib/types/invoice';
 import InvoiceLivePreview from '../components/InvoiceLivePreview';
 import { toast } from 'sonner';

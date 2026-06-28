@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -13,8 +14,16 @@ const idTypes = [
 
 const customerFormSchema = z.object({
   name: z.string().min(2),
-  phone: z.string().regex(/^\+91[0-9]{10}$/),
-  email: z.string().email().optional().or(z.literal('')),
+  phone: z.string().transform((v) => v.replace(/[\s-]/g, '')).pipe(z.string().regex(/^\+91[0-9]{10}$/)),
+  // FormData.get('email') is null when the optional field is omitted; accept
+  // null/'' and normalize to undefined so a blank email is valid (not a 400).
+  email: z
+    .string()
+    .email()
+    .optional()
+    .or(z.literal(''))
+    .nullable()
+    .transform((val) => val || undefined),
   id_type: z.enum(idTypes),
   id_number: z.string().min(5),
   address_line1: z.string().min(5),
@@ -60,7 +69,7 @@ export async function POST(request: Request) {
     if (idPhotos.length > 0) {
       for (const photo of idPhotos) {
         const fileName = `${user.id}/${uuidv4()}-${photo.name}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await createAdminClient().storage
           .from('hotel-pride')
           .upload(fileName, photo);
 
@@ -140,7 +149,7 @@ export async function PUT(request: Request) {
         if (idPhotos.length > 0) {
             for (const photo of idPhotos) {
                 const fileName = `${user.id}/${uuidv4()}-${photo.name}`;
-                const { data: uploadData, error: uploadError } = await supabase.storage
+                const { data: uploadData, error: uploadError } = await createAdminClient().storage
                     .from('hotel-pride')
                     .upload(fileName, photo);
 

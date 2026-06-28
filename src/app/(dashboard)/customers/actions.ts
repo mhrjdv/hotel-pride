@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 
 const idTypes = [
@@ -14,7 +15,7 @@ const idTypes = [
 
 const customerSchema = z.object({
   name: z.string().min(2),
-  phone: z.string().regex(/^\+91[0-9]{10}$/),
+  phone: z.string().transform((v) => v.replace(/[\s-]/g, '')).pipe(z.string().regex(/^\+91[0-9]{10}$/)),
   email: z.string().email().optional().or(z.literal('')),
   id_type: z.enum(idTypes),
   id_number: z.string().min(5),
@@ -55,7 +56,7 @@ export async function addCustomer(formData: FormData) {
       const timestamp = Date.now();
       const key = `${user.id}/${timestamp}-${photo.name}`;
       try {
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await createAdminClient().storage
           .from(BUCKET_NAME)
           .upload(key, photo);
 
@@ -109,7 +110,7 @@ export async function updateCustomer(id: string, existingPhotoUrls: string[], fo
       const timestamp = Date.now();
       const key = `${user.id}/${timestamp}-${photo.name}`;
       try {
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await createAdminClient().storage
           .from(BUCKET_NAME)
           .upload(key, photo);
 
@@ -148,13 +149,15 @@ export async function updateCustomer(id: string, existingPhotoUrls: string[], fo
   return { success: true, data: updatedCustomer };
 }
 
-export async function getSignedUrls(paths: string[]) {
-  const supabase = await createServerClient();
+export async function getSignedUrls(paths: string[]): Promise<
+  | { success: true; urls: string[] }
+  | { success: false; error: string }
+> {
   if (!paths || paths.length === 0) {
     return { success: true, urls: [] };
   }
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await createAdminClient().storage
     .from(BUCKET_NAME)
     .createSignedUrls(paths, 60); // URLs are valid for 1 minute for form display
 
@@ -164,7 +167,11 @@ export async function getSignedUrls(paths: string[]) {
   }
   
   // Create a map of path to signed URL for correct ordering
-  const urlMap = new Map(data.map(item => [item.path, item.signedUrl]));
+  const urlMap = new Map<string, string>(
+    data
+      .filter((item): item is typeof item & { path: string } => item.path !== null)
+      .map((item) => [item.path, item.signedUrl])
+  );
   // Return URLs in the same order as the requested paths
   const orderedUrls = paths.map(path => urlMap.get(path) || '');
   

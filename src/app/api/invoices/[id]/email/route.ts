@@ -101,7 +101,9 @@ export async function POST(
         messageId: result.messageId,
         recipient: emailData.to,
         type: reminderType ? 'reminder' : 'invoice',
+        previewUrl: result.previewUrl,
       },
+      previewUrl: result.previewUrl,
       message: reminderType 
         ? 'Payment reminder sent successfully'
         : 'Invoice sent successfully',

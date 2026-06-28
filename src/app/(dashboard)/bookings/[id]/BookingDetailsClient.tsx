@@ -29,7 +29,7 @@ import {
   Printer,
   RefreshCw,
   ArrowRightLeft,
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 
 type BookingRow = Database['public']['Tables']['bookings']['Row'] & {
@@ -266,10 +266,10 @@ export default function BookingDetailsClient({ booking: initialBooking }: Props)
           <div className="text-sm text-gray-600">
             {statusConfig.description}
             {booking.actual_check_in && (
-              <span className="ml-2">• Checked in: {new Date(booking.actual_check_in).toLocaleString()}</span>
+              <span className="ml-2">• Checked in: {new Date(booking.actual_check_in).toLocaleString('en-IN')}</span>
             )}
             {booking.actual_check_out && (
-              <span className="ml-2">• Checked out: {new Date(booking.actual_check_out).toLocaleString()}</span>
+              <span className="ml-2">• Checked out: {new Date(booking.actual_check_out).toLocaleString('en-IN')}</span>
             )}
           </div>
         </CardContent>

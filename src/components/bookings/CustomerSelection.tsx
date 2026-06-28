@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Search, Plus, User, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
+import { Search, Plus, User, Phone, Mail, MapPin, CreditCard } from '@/components/icons';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

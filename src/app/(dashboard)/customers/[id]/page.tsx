@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { CustomerProfileClient } from './CustomerProfileClient';
 
 interface Props {
@@ -37,15 +38,15 @@ export default async function CustomerProfile({ params }: Props) {
   if (customer.id_photo_urls && customer.id_photo_urls.length > 0) {
     const photoPaths = customer.id_photo_urls.filter((p: string | null) => p);
     if (photoPaths.length > 0) {
-      const { data, error } = await supabase.storage
+      const { data, error } = await createAdminClient().storage
         .from('hotel-pride')
         .createSignedUrls(photoPaths as string[], 3600);
 
       if (!error && data) {
-        signedPhotoUrls = data.map((item, index) => ({
+        signedPhotoUrls = data.map((item: { signedUrl: string }, index: number) => ({
           url: item.signedUrl,
           path: photoPaths[index] as string
-        })).filter(item => item.url);
+        })).filter((item: { url: string; path: string }) => item.url);
       }
     }
   }

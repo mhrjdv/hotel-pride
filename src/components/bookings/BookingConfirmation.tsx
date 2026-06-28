@@ -18,7 +18,7 @@ import {
   Printer,
   Copy,
   User
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 import { BookingData } from '@/lib/types/booking';
 import { InvoiceGenerator } from './InvoiceGenerator';
@@ -69,8 +69,8 @@ Booking Confirmation
 ====================
 Room: ${data.room?.room_number} (${roomTypeLabels[data.room?.room_type as keyof typeof roomTypeLabels]})
 Guest: ${data.primaryGuest?.name}
-Check-in: ${data.checkInDate ? new Date(data.checkInDate).toLocaleDateString() : 'N/A'}
-Check-out: ${data.checkOutDate ? new Date(data.checkOutDate).toLocaleDateString() : 'N/A'}
+Check-in: ${data.checkInDate ? new Date(data.checkInDate).toLocaleDateString('en-IN') : 'N/A'}
+Check-out: ${data.checkOutDate ? new Date(data.checkOutDate).toLocaleDateString('en-IN') : 'N/A'}
 Total Amount: ₹${totalAmount.toLocaleString('en-IN')}
 Payment Status: ${paymentStatus.toUpperCase()}
     `.trim();

@@ -16,7 +16,7 @@ import {
   FileText,
   Building,
   User
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 import { Invoice, INVOICE_STATUSES, PAYMENT_STATUSES } from '@/lib/types/invoice';
 import { formatCurrency, calculateGSTBreakdown, numberToWords } from '@/lib/utils/invoice-calculations';
@@ -57,8 +57,32 @@ export default function InvoiceView({ invoiceId }: InvoiceViewProps) {
     fetchInvoice();
   }, [fetchInvoice]);
 
-  const handleSendEmail = () => {
-    router.push(`/invoices/${invoiceId}/email`);
+  const handleSendEmail = async () => {
+    toast.info('Sending invoice email…');
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailData: { attach_pdf: true } }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.previewUrl) {
+          toast.success('Invoice email sent (test inbox).', {
+            description: 'No real SMTP set — click to view the email preview.',
+            action: { label: 'View email', onClick: () => window.open(data.previewUrl, '_blank') },
+            duration: 15000,
+          });
+        } else {
+          toast.success('Invoice email sent.');
+        }
+      } else {
+        toast.error(data.error || 'Failed to send email.');
+      }
+    } catch (error) {
+      console.error('Error sending invoice email:', error);
+      toast.error('Failed to send email.');
+    }
   };
 
   const handleDownloadPDF = () => {

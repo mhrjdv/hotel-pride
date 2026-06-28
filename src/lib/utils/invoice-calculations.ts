@@ -10,32 +10,22 @@ export function calculateLineItem(item: InvoiceLineItemFormData): InvoiceLineIte
   const discountRate = item.discount_rate || 0;
   const taxInclusive = item.gst_inclusive || false;
 
-  // Calculate base amount
-  const baseAmount = quantity * unitPrice;
+  const grossAmount = quantity * unitPrice;
+  const discountAmount = discountRate > 0 ? (grossAmount * discountRate) / 100 : 0;
+  const discountedAmount = grossAmount - discountAmount;
 
-  let lineTotal = baseAmount;
+  let lineTotal = discountedAmount;
   let taxAmount = 0;
-  let discountAmount = 0;
-
-  // Calculate discount first (always on base amount)
-  if (discountRate > 0) {
-    discountAmount = (baseAmount * discountRate) / 100;
-  }
 
   // Calculate tax
   if (taxRate > 0) {
     if (taxInclusive) {
-      // Tax is included in the unit price
-      taxAmount = (baseAmount * taxRate) / (100 + taxRate);
-      lineTotal = baseAmount; // Total remains the same
+      taxAmount = (discountedAmount * taxRate) / (100 + taxRate);
+      lineTotal = discountedAmount;
     } else {
-      // Tax is added to the base amount
-      const taxableAmount = baseAmount - discountAmount;
-      taxAmount = (taxableAmount * taxRate) / 100;
-      lineTotal = baseAmount + taxAmount - discountAmount;
+      taxAmount = (discountedAmount * taxRate) / 100;
+      lineTotal = discountedAmount + taxAmount;
     }
-  } else {
-    lineTotal = baseAmount - discountAmount;
   }
 
   const finalAmount = lineTotal;
@@ -54,7 +44,7 @@ export function calculateLineItem(item: InvoiceLineItemFormData): InvoiceLineIte
 export function calculateInvoiceTotal(lineItems: InvoiceLineItemFormData[]): InvoiceCalculation {
   const calculations = lineItems.map(calculateLineItem);
   
-  const subtotal = calculations.reduce((sum, calc) => sum + calc.line_total, 0);
+  const subtotal = calculations.reduce((sum, calc) => sum + calc.final_amount, 0);
   const totalTax = calculations.reduce((sum, calc) => sum + calc.tax_amount, 0);
   const totalDiscount = calculations.reduce((sum, calc) => sum + calc.discount_amount, 0);
   const totalAmount = calculations.reduce((sum, calc) => sum + calc.final_amount, 0);
@@ -194,8 +184,11 @@ export function numberToWords(amount: number): string {
     return result.trim();
   }
 
-  const rupees = Math.floor(amount);
-  const paise = Math.round((amount - rupees) * 100);
+  // Round to the nearest paise first so rounding (e.g. 0.999 -> 1.00) rolls
+  // correctly into rupees instead of producing an invalid 100-paise value.
+  const totalPaise = Math.round(amount * 100);
+  const rupees = Math.floor(totalPaise / 100);
+  const paise = totalPaise % 100;
 
   let result = '';
 

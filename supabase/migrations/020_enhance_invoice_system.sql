@@ -4,6 +4,11 @@
 -- =====================================================
 -- HOTEL CONFIGURATION TABLE
 -- =====================================================
+-- Replaces the basic hotel_config from migration 001 with the richer,
+-- invoice-era schema the app actually uses (hotel_address, bank_*, buffet_*, ...).
+-- CASCADE drops the old default row, trigger, and policies created in 001.
+DROP TABLE IF EXISTS hotel_config CASCADE;
+
 CREATE TABLE hotel_config (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   hotel_name VARCHAR(200) NOT NULL DEFAULT 'Hotel Pride',

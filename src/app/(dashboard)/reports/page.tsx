@@ -24,12 +24,13 @@ import {
   AlertCircle,
   FileText,
   ChevronDown,
-} from 'lucide-react';
+} from '@/components/icons';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { exportRowsToCsv } from '@/lib/utils/export-csv';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,21 +118,6 @@ function getPeriodRange(period: Period): { start: string; end: string; label: st
   return { start: start.toISOString(), end: end.toISOString(), label };
 }
 
-// ─── CSV export helper ────────────────────────────────────────────────────────
-
-function downloadCSV(filename: string, rows: string[][]): void {
-  const csv = rows
-    .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
 const fmt = new Intl.NumberFormat('en-IN', {
@@ -204,15 +190,18 @@ function StatCard({
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-      <Card className="overflow-hidden border-0 shadow-sm hover:shadow-md transition-shadow">
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div className="p-2 rounded-xl" style={{ backgroundColor: `${color}1a` }}>
-              <Icon className="w-5 h-5" style={{ color }} />
+      <Card className="overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1.5 rounded-lg shrink-0" style={{ backgroundColor: `${color}1a` }}>
+                <Icon className="w-4 h-4" style={{ color }} aria-hidden="true" />
+              </div>
+              <p className="text-xs font-medium text-gray-600 truncate">{title}</p>
             </div>
             {trend !== undefined && (
               <div
-                className={`flex items-center gap-0.5 text-xs font-medium px-2 py-1 rounded-full ${
+                className={`flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
                   trend >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
                 }`}
               >
@@ -221,9 +210,8 @@ function StatCard({
               </div>
             )}
           </div>
-          <p className="text-2xl font-bold text-gray-900 mb-0.5 truncate">{value}</p>
-          <p className="text-sm text-gray-500 font-medium">{title}</p>
-          {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
+          <p className="text-2xl font-bold text-gray-900 tracking-tight truncate" title={value}>{value}</p>
+          {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           {miniData && miniData.length > 1 && (
             <div className="mt-3">
               <MiniBarChart data={miniData} color={color} />
@@ -235,13 +223,53 @@ function StatCard({
   );
 }
 
+// ─── Loading skeleton ─────────────────────────────────────────────────────────
+
+function StatCardSkeleton() {
+  return (
+    <Card className="border border-gray-100 shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-7 h-7 rounded-lg bg-gray-200 animate-pulse" />
+          <div className="h-3 w-20 rounded bg-gray-200 animate-pulse" />
+        </div>
+        <div className="h-7 w-24 rounded bg-gray-200 animate-pulse" />
+        <div className="h-3 w-16 rounded bg-gray-100 animate-pulse mt-2" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReportsSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Loading analytics">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i} className="border border-gray-100 shadow-sm">
+            <CardContent className="p-5 space-y-3">
+              <div className="h-4 w-32 rounded bg-gray-200 animate-pulse" />
+              {Array.from({ length: 4 }).map((__, j) => (
+                <div key={j} className="h-3 w-full rounded bg-gray-100 animate-pulse" />
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Export dropdown ──────────────────────────────────────────────────────────
 
-function ExportMenu({
-  onExport,
-}: {
-  onExport: (type: 'summary' | 'bookings' | 'invoices' | 'rooms' | 'guests') => void;
-}) {
+type ExportType = 'report' | 'bookings' | 'invoices' | 'rooms' | 'guests';
+
+function ExportMenu({ onExport }: { onExport: (type: ExportType) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -249,12 +277,19 @@ function ExportMenu({
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', onKey);
+    };
   }, []);
 
-  const items: { key: 'summary' | 'bookings' | 'invoices' | 'rooms' | 'guests'; label: string }[] = [
-    { key: 'summary', label: 'Summary Report' },
+  const items: { key: ExportType; label: string }[] = [
+    { key: 'report', label: 'Full Report (CSV)' },
     { key: 'bookings', label: 'Bookings CSV' },
     { key: 'invoices', label: 'Invoices CSV' },
     { key: 'rooms', label: 'Room Performance CSV' },
@@ -268,20 +303,26 @@ function ExportMenu({
         size="sm"
         className="gap-1.5"
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
-        <Download className="w-4 h-4" />
+        <Download className="w-4 h-4" aria-hidden="true" />
         Export
-        <ChevronDown className="w-3 h-3" />
+        <ChevronDown className="w-3 h-3" aria-hidden="true" />
       </Button>
       {open && (
-        <div className="absolute right-0 mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-100 z-50 overflow-hidden">
+        <div
+          role="menu"
+          className="absolute right-0 mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-100 z-50 overflow-hidden"
+        >
           {items.map((item) => (
             <button
               key={item.key}
+              role="menuitem"
               onClick={() => { onExport(item.key); setOpen(false); }}
               className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
             >
-              <FileText className="w-3.5 h-3.5 text-gray-400" />
+              <FileText className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
               {item.label}
             </button>
           ))}
@@ -516,37 +557,74 @@ export default function ReportsPage() {
   // ── Export handlers ─────────────────────────────────────────────────────────
 
   const handleExport = useCallback(
-    (type: 'summary' | 'bookings' | 'invoices' | 'rooms' | 'guests') => {
+    (type: ExportType) => {
       const today = new Date().toISOString().split('T')[0];
+      const slug = period; // today | week | month | quarter | year
 
-      if (type === 'summary') {
-        const rows: string[][] = [
-          ['Hotel Pride — Report Summary'],
-          [`Period: ${periodLabel}`, `Generated: ${today}`],
+      if (type === 'report') {
+        const statusLabels: Record<string, string> = {
+          confirmed: 'Confirmed', checked_in: 'Checked In', checked_out: 'Checked Out',
+          cancelled: 'Cancelled', no_show: 'No Show',
+        };
+        const sourceLabels: Record<string, string> = {
+          walk_in: 'Walk In', phone: 'Phone', online: 'Online', agent: 'Agent',
+        };
+
+        const rows: (string | number)[][] = [
+          ['Hotel Pride — Reports & Analytics'],
+          ['Period', periodLabel],
+          ['Generated', today],
           [],
-          ['Metric', 'Value'],
+          ['Summary Metric', 'Value'],
           ['Total Revenue', formatINR(analytics.totalRevenue)],
           ['All-time Revenue', formatINR(analytics.totalRevenueAllTime)],
           ['GST Collected', formatINR(analytics.totalGst)],
           ['Outstanding Dues', formatINR(analytics.totalDue)],
-          ['Total Bookings', String(analytics.totalBookings)],
-          ['Active Stays', String(analytics.activeBookings)],
-          ['Pending Payments', String(analytics.pendingPayments)],
+          ['Total Bookings', analytics.totalBookings],
+          ['Active Stays', analytics.activeBookings],
+          ['Pending Payments', analytics.pendingPayments],
           ['Avg Stay (nights)', analytics.avgNights.toFixed(2)],
           ['Occupancy Rate', `${analytics.occupancyRate.toFixed(1)}%`],
-          ['Total Rooms', String(analytics.totalRooms)],
-          ['Occupied Rooms', String(analytics.occupiedRooms)],
-          ['Available Rooms', String(analytics.availableRooms)],
-          ['Unique Guests', String(analytics.uniqueGuests)],
+          ['Total Rooms', analytics.totalRooms],
+          ['Occupied Rooms', analytics.occupiedRooms],
+          ['Available Rooms', analytics.availableRooms],
+          ['Unique Guests', analytics.uniqueGuests],
           ['Invoice Revenue', formatINR(analytics.invRevenue)],
-          ['Paid Invoices', String(analytics.invPaid)],
-          ['Pending Invoices', String(analytics.invPending)],
+          ['Paid Invoices', analytics.invPaid],
+          ['Pending Invoices', analytics.invPending],
+          [],
+          ['Bookings by Status', 'Count'],
+          ...Object.entries(analytics.byStatus).map(([k, v]) => [statusLabels[k] || k, v]),
+          [],
+          ['Bookings by Source', 'Count'],
+          ...Object.entries(analytics.bySource).map(([k, v]) => [sourceLabels[k] || k, v]),
         ];
-        downloadCSV(`hotel-pride-summary-${today}.csv`, rows);
+
+        if (analytics.periodBookings.length > 0) {
+          rows.push([]);
+          rows.push(['Bookings in Period']);
+          rows.push(['Booking #', 'Guest', 'Room', 'Check-in', 'Check-out', 'Nights', 'Total', 'Paid', 'Due', 'Status']);
+          for (const b of analytics.periodBookings) {
+            rows.push([
+              b.booking_number,
+              b.customers?.name || '',
+              b.rooms?.room_number || '',
+              b.check_in_date,
+              b.check_out_date,
+              b.total_nights || 0,
+              b.total_amount || 0,
+              b.paid_amount || 0,
+              b.due_amount || 0,
+              b.booking_status,
+            ]);
+          }
+        }
+
+        exportRowsToCsv(`hotel-pride-report-${slug}.csv`, rows);
       }
 
       if (type === 'bookings') {
-        const rows: string[][] = [
+        const rows: (string | number)[][] = [
           ['Booking #', 'Guest', 'Phone', 'Room', 'Room Type', 'Check-in', 'Check-out', 'Nights', 'Base Amount', 'GST', 'Total Amount', 'Paid', 'Due', 'Booking Status', 'Payment Status', 'Source', 'Created'],
           ...bookings.map((b) => [
             b.booking_number,
@@ -556,70 +634,70 @@ export default function ReportsPage() {
             b.rooms?.room_type || '',
             b.check_in_date,
             b.check_out_date,
-            String(b.total_nights || 0),
-            String(b.base_amount || 0),
-            String(b.gst_amount || 0),
-            String(b.total_amount || 0),
-            String(b.paid_amount || 0),
-            String(b.due_amount || 0),
+            b.total_nights || 0,
+            b.base_amount || 0,
+            b.gst_amount || 0,
+            b.total_amount || 0,
+            b.paid_amount || 0,
+            b.due_amount || 0,
             b.booking_status,
             b.payment_status,
             b.booking_source || '',
             b.created_at.split('T')[0],
           ]),
         ];
-        downloadCSV(`hotel-pride-bookings-${today}.csv`, rows);
+        exportRowsToCsv(`hotel-pride-bookings-${today}.csv`, rows);
       }
 
       if (type === 'invoices') {
-        const rows: string[][] = [
+        const rows: (string | number)[][] = [
           ['Invoice #', 'Customer', 'Date', 'Total Amount', 'Tax', 'Paid', 'Balance', 'Payment Status', 'Status'],
           ...invoices.map((inv) => [
             inv.invoice_number,
             inv.customer_name,
             inv.invoice_date,
-            String(inv.total_amount || 0),
-            String(inv.total_tax || 0),
-            String(inv.paid_amount || 0),
-            String(inv.balance_amount || 0),
+            inv.total_amount || 0,
+            inv.total_tax || 0,
+            inv.paid_amount || 0,
+            inv.balance_amount || 0,
             inv.payment_status,
             inv.status,
           ]),
         ];
-        downloadCSV(`hotel-pride-invoices-${today}.csv`, rows);
+        exportRowsToCsv(`hotel-pride-invoices-${today}.csv`, rows);
       }
 
       if (type === 'rooms') {
-        const rows: string[][] = [
+        const rows: (string | number)[][] = [
           ['Rank', 'Room', 'Type', 'Total Revenue', 'Bookings', 'Nights'],
           ...analytics.roomPerformance.map((r, i) => [
-            String(i + 1),
+            i + 1,
             r.room,
             r.type,
-            String(r.revenue),
-            String(r.bookings),
-            String(r.nights),
+            r.revenue,
+            r.bookings,
+            r.nights,
           ]),
         ];
-        downloadCSV(`hotel-pride-room-performance-${today}.csv`, rows);
+        exportRowsToCsv(`hotel-pride-room-performance-${today}.csv`, rows);
       }
 
       if (type === 'guests') {
-        const rows: string[][] = [
+        const rows: (string | number)[][] = [
           ['Rank', 'Guest Name', 'Phone', 'Total Bookings', 'Total Revenue', 'Loyalty'],
           ...analytics.topCustomers.map((c, i) => [
-            String(i + 1),
+            i + 1,
             c.name,
             c.phone,
-            String(c.bookings),
-            String(c.revenue),
+            c.bookings,
+            c.revenue,
             c.bookings >= 3 ? 'VIP' : c.bookings >= 2 ? 'Returning' : 'New',
           ]),
         ];
-        downloadCSV(`hotel-pride-guests-${today}.csv`, rows);
+        exportRowsToCsv(`hotel-pride-guests-${today}.csv`, rows);
       }
     },
-    [analytics, bookings, invoices, periodLabel]
+    [analytics, bookings, invoices, periodLabel, period]
   );
 
   // ── Room status colour map (stable reference) ──────────────────────────────
@@ -641,8 +719,8 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Reports &amp; Analytics</h1>
-          <p className="text-gray-500 mt-1 text-sm">Comprehensive insights into hotel performance</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Reports &amp; Analytics</h1>
+          <p className="text-gray-500 mt-0.5 text-sm">Hotel performance at a glance</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
@@ -665,10 +743,23 @@ export default function ReportsPage() {
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-32 gap-4">
-          <div className="w-12 h-12 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin" />
-          <p className="text-gray-400 text-sm">Loading analytics…</p>
-        </div>
+        <ReportsSkeleton />
+      ) : bookings.length === 0 && rooms.length === 0 && invoices.length === 0 ? (
+        <Card className="border border-gray-100 shadow-sm">
+          <CardContent className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <div className="p-3 rounded-full bg-gray-50">
+              <BarChart3 className="w-8 h-8 text-gray-300" aria-hidden="true" />
+            </div>
+            <p className="text-base font-semibold text-gray-900">No data yet</p>
+            <p className="text-sm text-gray-500 max-w-xs">
+              Create bookings and invoices to see revenue, occupancy and guest analytics here.
+            </p>
+            <Button variant="outline" size="sm" className="gap-1.5 mt-1" onClick={fetchData}>
+              <RefreshCw className="w-4 h-4" aria-hidden="true" />
+              Refresh
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid grid-cols-4 w-full sm:w-auto sm:inline-flex">

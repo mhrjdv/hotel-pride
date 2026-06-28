@@ -2,7 +2,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { UserTable } from './UserTable';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '@/components/icons';
 import { Card } from '@/components/ui/card';
 
 export default async function UserManagementPage() {

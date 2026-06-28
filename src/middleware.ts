@@ -1,95 +1,73 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import type { Database } from '@/lib/supabase/types'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+  let supabaseResponse = NextResponse.next({
+    request,
   })
 
-  const supabase = createServerClient(
+  const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
+        getAll() {
+          return request.cookies.getAll()
         },
-        set(name: string, value: string, options) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+          supabaseResponse = NextResponse.next({
+            request,
           })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
         },
       },
     }
   )
 
-  // Check if user is authenticated from cookie session
-  const userCookie = request.cookies.get('sb-user')?.value
-  let user = null
-  let userRole = 'staff'
-  
-  if (userCookie) {
-    try {
-      user = JSON.parse(userCookie)
-      userRole = user.role || 'admin' // default to admin for mock
-    } catch (e) {}
-  }
+  // IMPORTANT: Do not run code between createServerClient and getUser().
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { pathname } = request.nextUrl
 
   // Public routes that don't require authentication
   const publicRoutes = ['/login', '/auth']
-  const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
+  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
 
-  // Redirect to login if not authenticated and trying to access protected route
+  // Redirect to login if not authenticated and trying to access a protected route
   if (!user && !isPublicRoute) {
     const redirectUrl = new URL('/login', request.url)
-    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
+    redirectUrl.searchParams.set('redirectTo', pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
   // Redirect to dashboard if authenticated and trying to access login
-  if (user && request.nextUrl.pathname === '/login') {
+  if (user && pathname === '/login') {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  // Check user profile and role for admin routes
-  if (user && request.nextUrl.pathname.startsWith('/admin')) {
-    if (!['admin', 'manager'].includes(userRole)) {
+  // Enforce role-based access for admin routes
+  if (user && pathname.startsWith('/admin')) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile || !['admin', 'manager'].includes(profile.role)) {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }
 
-  return response
+  // IMPORTANT: Return the supabaseResponse so refreshed auth cookies are carried.
+  return supabaseResponse
 }
 
 export const config = {
@@ -103,4 +81,4 @@ export const config = {
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-} 
+}

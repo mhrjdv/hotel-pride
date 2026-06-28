@@ -40,7 +40,7 @@ import {
   UserCheck,
   Camera,
   ExternalLink,
-} from 'lucide-react';
+} from '@/components/icons';
 import { Database } from '@/lib/supabase/types';
 
 type Customer = Database['public']['Tables']['customers']['Row'];

@@ -16,7 +16,7 @@ import {
   AlertCircle,
   CheckCircle,
   Clock
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils/invoice-calculations';
 

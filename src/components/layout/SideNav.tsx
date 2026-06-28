@@ -21,7 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-} from 'lucide-react';
+} from '@/components/icons';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },

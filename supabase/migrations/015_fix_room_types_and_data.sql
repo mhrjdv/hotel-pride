@@ -6,12 +6,8 @@
 ALTER TABLE rooms
   DROP CONSTRAINT IF EXISTS rooms_room_type_check;
 
-ALTER TABLE rooms
-  ADD CONSTRAINT rooms_room_type_check CHECK (
-    room_type IN ('double-bed-deluxe', 'vip', 'executive-3bed')
-  );
-
 -- Update existing rooms to use the new room types
+-- (must run BEFORE adding the stricter constraint, or existing rows violate it)
 -- Map from old types to new types
 UPDATE rooms SET 
   room_type = 'double-bed-deluxe',
@@ -36,6 +32,12 @@ UPDATE rooms SET
   non_ac_rate = 4500.00,
   allow_extra_bed = true
 WHERE room_type IN ('vip-ac', 'vip-non-ac');
+
+-- Now that all rows use the new types, enforce the stricter constraint.
+ALTER TABLE rooms
+  ADD CONSTRAINT rooms_room_type_check CHECK (
+    room_type IN ('double-bed-deluxe', 'vip', 'executive-3bed')
+  );
 
 -- Update the current_rate based on the room type
 UPDATE rooms SET 

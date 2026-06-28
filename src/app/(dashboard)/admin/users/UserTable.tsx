@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { toast } from 'sonner';
 import { updateUserRole, updateUserStatus } from '../actions';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '@/components/icons';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 

@@ -59,17 +59,19 @@ export default async function CustomersPage({
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-bold tracking-tight">Customers</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CustomerSearch />
-          <AddCustomerButton />
+          <div className="shrink-0">
+            <AddCustomerButton />
+          </div>
         </div>
       </div>
 
-      <Suspense fallback={<div className="text-center">Loading customers...</div>}>
-         <CustomerList query={query} customers={customers || []} />
+      <Suspense fallback={<CustomerList query={query} customers={[]} isLoading />}>
+        <CustomerList query={query} customers={customers || []} />
       </Suspense>
     </div>
   );

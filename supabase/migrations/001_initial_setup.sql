@@ -261,6 +261,27 @@ ALTER TABLE room_rates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+-- Permission helper must exist before the policies that reference it.
+-- (Re-defined later via CREATE OR REPLACE as a harmless no-op.)
+CREATE OR REPLACE FUNCTION has_permission(required_role TEXT)
+RETURNS BOOLEAN SECURITY DEFINER AS $$
+DECLARE
+  user_role TEXT;
+BEGIN
+  SELECT role INTO user_role
+  FROM profiles
+  WHERE id = auth.uid();
+
+  RETURN CASE
+    WHEN required_role = 'admin' THEN user_role = 'admin'
+    WHEN required_role = 'manager' THEN user_role IN ('admin', 'manager')
+    WHEN required_role = 'staff' THEN user_role IN ('admin', 'manager', 'staff')
+    WHEN required_role = 'receptionist' THEN user_role IN ('admin', 'manager', 'staff', 'receptionist')
+    ELSE false
+  END;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Profiles policies
 CREATE POLICY "Users can view their own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);

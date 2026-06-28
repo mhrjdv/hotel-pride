@@ -9,19 +9,65 @@ const emailConfig = {
   secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
+    // Accept either SMTP_PASSWORD or SMTP_PASS (the name used in .env.local).
+    pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS,
   },
 };
+
+// Placeholder values shipped in the .env template — treat as "not configured".
+const PLACEHOLDER_USER = 'your_gmail@gmail.com';
+const PLACEHOLDER_PASS = 'your_app_password';
 
 /**
  * Create nodemailer transporter
  */
 function createTransporter() {
-  if (!emailConfig.auth.user || !emailConfig.auth.pass) {
-    throw new Error('SMTP credentials not configured');
+  if (
+    !emailConfig.auth.user ||
+    !emailConfig.auth.pass ||
+    emailConfig.auth.user === PLACEHOLDER_USER ||
+    emailConfig.auth.pass === PLACEHOLDER_PASS
+  ) {
+    throw new Error('SMTP credentials not configured. Add a real SMTP_USER and SMTP_PASS to .env.local.');
   }
 
   return nodemailer.createTransport(emailConfig);
+}
+
+/** True when real (non-placeholder) SMTP credentials are present. */
+function hasRealSmtp(): boolean {
+  const { user, pass } = emailConfig.auth;
+  return !!user && !!pass && user !== PLACEHOLDER_USER && pass !== PLACEHOLDER_PASS;
+}
+
+let etherealTransport: ReturnType<typeof nodemailer.createTransport> | null = null;
+let etherealFrom = 'no-reply@hotelpride.test';
+
+/**
+ * Returns a real SMTP transporter when credentials are configured; otherwise a
+ * throwaway Ethereal test mailbox (created on the fly, no signup) so the email
+ * feature works without real credentials. For Ethereal sends,
+ * nodemailer.getTestMessageUrl(info) yields a preview link to view the email.
+ */
+async function getTransport(): Promise<{
+  transporter: ReturnType<typeof nodemailer.createTransport>;
+  from: string;
+  isEthereal: boolean;
+}> {
+  if (hasRealSmtp()) {
+    return { transporter: nodemailer.createTransport(emailConfig), from: emailConfig.auth.user!, isEthereal: false };
+  }
+  if (!etherealTransport) {
+    const acc = await nodemailer.createTestAccount();
+    etherealFrom = acc.user;
+    etherealTransport = nodemailer.createTransport({
+      host: acc.smtp.host,
+      port: acc.smtp.port,
+      secure: acc.smtp.secure,
+      auth: { user: acc.user, pass: acc.pass },
+    });
+  }
+  return { transporter: etherealTransport, from: etherealFrom, isEthereal: true };
 }
 
 /**
@@ -143,9 +189,9 @@ export async function sendInvoiceEmail(
   invoice: Invoice,
   emailData: InvoiceEmailData,
   attachPDF: boolean = true
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; previewUrl?: string }> {
   try {
-    const transporter = createTransporter();
+    const { transporter, from, isEthereal } = await getTransport();
 
     // Generate email content
     const htmlContent = emailData.message || generateInvoiceEmailTemplate(invoice);
@@ -162,7 +208,7 @@ export async function sendInvoiceEmail(
     } = {
       from: {
         name: invoice.hotel_name,
-        address: emailConfig.auth.user!,
+        address: from,
       },
       to: emailData.to,
       cc: emailData.cc,
@@ -196,10 +242,12 @@ export async function sendInvoiceEmail(
 
     // Send email
     const info = await transporter.sendMail(mailOptions);
+    const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) || undefined : undefined;
 
     return {
       success: true,
       messageId: info.messageId,
+      previewUrl,
     };
   } catch (error) {
     console.error('Error sending invoice email:', error);
@@ -216,9 +264,9 @@ export async function sendInvoiceEmail(
 export async function sendPaymentReminderEmail(
   invoice: Invoice,
   reminderType: 'gentle' | 'urgent' | 'final' = 'gentle'
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; previewUrl?: string }> {
   try {
-    const transporter = createTransporter();
+    const { transporter, from, isEthereal } = await getTransport();
 
     const reminderMessages = {
       gentle: {
@@ -260,9 +308,9 @@ export async function sendPaymentReminderEmail(
 
     const mailOptions = {
       from: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any  
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         name: (invoice as any).hotel_name,
-        address: emailConfig.auth.user!,
+        address: from,
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       to: (invoice as any).customer_email,
@@ -271,11 +319,13 @@ export async function sendPaymentReminderEmail(
     };
 
     const info = await transporter.sendMail(mailOptions);
+    const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) || undefined : undefined;
 
     return {
       success: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messageId: (info as any).messageId,
+      previewUrl,
     };
   } catch (error) {
     console.error('Error sending payment reminder:', error);
@@ -309,14 +359,14 @@ export async function testEmailConfiguration(): Promise<{ success: boolean; erro
 export async function sendTestEmail(
   to: string,
   hotelName: string = 'Hotel Pride'
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; previewUrl?: string }> {
   try {
-    const transporter = createTransporter();
+    const { transporter, from, isEthereal } = await getTransport();
 
     const mailOptions = {
       from: {
         name: hotelName,
-        address: emailConfig.auth.user!,
+        address: from,
       },
       to,
       subject: 'Test Email from Hotel Management System',
@@ -324,15 +374,17 @@ export async function sendTestEmail(
         <h2>Email Configuration Test</h2>
         <p>This is a test email from your hotel management system.</p>
         <p>If you received this email, your SMTP configuration is working correctly.</p>
-        <p>Sent at: ${new Date().toLocaleString()}</p>
+        <p>Sent at: ${new Date().toLocaleString('en-IN')}</p>
       `,
     };
 
     const info = await transporter.sendMail(mailOptions);
+    const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) || undefined : undefined;
 
     return {
       success: true,
       messageId: info.messageId,
+      previewUrl,
     };
   } catch (error) {
     console.error('Error sending test email:', error);

@@ -21,7 +21,7 @@ import {
   User,
   FileText,
   DollarSign
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 import { InvoiceFormData, InvoiceLineItemFormData, ITEM_TYPES } from '@/lib/types/invoice';
 import { calculateInvoiceTotal, formatCurrency } from '@/lib/utils/invoice-calculations';

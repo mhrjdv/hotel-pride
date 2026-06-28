@@ -19,7 +19,7 @@ import {
   Save,
   Clock,
   Trash2
-} from 'lucide-react';
+} from '@/components/icons';
 import RoomSelection from './RoomSelection';
 import { GuestRegistration } from './GuestRegistration';
 import { PaymentProcessing } from './PaymentProcessing';
@@ -164,7 +164,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
       setHasDraft(true);
       logInfo('Draft saved successfully', { timestamp: savedDate.toISOString() });
       toast.success('Draft saved!', {
-        description: `Saved at ${savedDate.toLocaleTimeString()}`,
+        description: `Saved at ${savedDate.toLocaleTimeString('en-IN')}`,
       });
     } catch (error) {
       logError('Failed to save draft', error, { bookingData });
@@ -630,7 +630,7 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
                 {hasDraft && lastSavedDraft && (
                   <div className="flex items-center gap-2 text-xs text-gray-500 p-2 bg-gray-100 rounded-md">
                     <Clock className="w-3 h-3 flex-shrink-0" />
-                    <span>Last draft: {lastSavedDraft.toLocaleTimeString()}</span>
+                    <span>Last draft: {lastSavedDraft.toLocaleTimeString('en-IN')}</span>
                   </div>
                 )}
                 <div className="flex gap-2">

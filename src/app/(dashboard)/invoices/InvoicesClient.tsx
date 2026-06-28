@@ -19,7 +19,7 @@ import {
   Calendar,
   DollarSign,
   TrendingUp
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 import { InvoiceListItem, InvoiceFilters, INVOICE_STATUSES, PAYMENT_STATUSES } from '@/lib/types/invoice';
 import { formatCurrency } from '@/lib/utils/invoice-calculations';
@@ -99,27 +99,9 @@ export default function InvoicesClient() {
     setCurrentPage(1);
   };
 
-  const handleDeleteInvoice = async (invoiceId: string) => {
-    if (!confirm('Are you sure you want to delete this invoice?')) return;
-
-    try {
-      const response = await fetch(`/api/invoices/${invoiceId}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('Invoice deleted successfully');
-        fetchInvoices();
-      } else {
-        toast.error(data.error || 'Failed to delete invoice');
-      }
-    } catch (error) {
-      console.error('Error deleting invoice:', error);
-      toast.error('Failed to delete invoice');
-    }
-  };
+  // Invoice deletion is intentionally disabled in the UI for now. When it is
+  // re-enabled it must SOFT-delete (set a deleted_at flag and filter it out)
+  // rather than hard-delete, so invoices are never permanently lost.
 
   const getStatusBadge = (status: string, type: 'invoice' | 'payment') => {
     const statuses = type === 'invoice' ? INVOICE_STATUSES : PAYMENT_STATUSES;
@@ -321,16 +303,33 @@ export default function InvoicesClient() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => router.push(`/invoices/${invoice.id}/email`)}
+                        onClick={async () => {
+                          toast.info('Sending invoice email…');
+                          try {
+                            const res = await fetch(`/api/invoices/${invoice.id}/email`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ emailData: { attach_pdf: true } }),
+                            });
+                            const data = await res.json();
+                            if (data.success) toast.success('Invoice email sent.');
+                            else toast.error(data.error || 'Failed to send email.');
+                          } catch {
+                            toast.error('Failed to send email.');
+                          }
+                        }}
                       >
                         <Mail className="h-4 w-4" />
                       </Button>
                       
+                      {/* Deletion disabled for now — invoices should be soft-deleted, not removed. */}
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleDeleteInvoice(invoice.id)}
-                        className="text-red-600 hover:text-red-700"
+                        disabled
+                        title="Invoice deletion is disabled"
+                        aria-label="Delete invoice (disabled)"
+                        className="text-red-400 cursor-not-allowed"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

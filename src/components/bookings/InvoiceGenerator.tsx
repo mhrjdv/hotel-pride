@@ -20,7 +20,7 @@ import {
   Users,
   Hotel,
   CreditCard
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 
 interface InvoiceData {

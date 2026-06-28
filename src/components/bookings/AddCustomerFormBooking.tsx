@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Upload, X } from 'lucide-react';
+import { Loader2, Upload, X } from '@/components/icons';
 import { addCustomer, updateCustomer, getSignedUrls } from '@/app/(dashboard)/customers/actions';
 import { Database } from '@/lib/supabase/types';
 
@@ -49,7 +49,8 @@ const customerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   phone: z
     .string()
-    .regex(/^\+91[0-9]{10}$/, 'Phone number must be in +91XXXXXXXXXX format.'),
+    .transform((v) => v.replace(/[\s-]/g, ''))
+    .pipe(z.string().regex(/^\+91[0-9]{10}$/, 'Phone number must be in +91XXXXXXXXXX format.')),
   email: z.string().email('Invalid email address.').optional().or(z.literal('')),
   id_type: z.enum(idTypes),
   id_number: z.string().min(5, 'ID number seems too short.'),

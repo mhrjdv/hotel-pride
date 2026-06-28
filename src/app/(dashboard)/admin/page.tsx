@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Settings, Shield } from 'lucide-react';
+import { Users, Settings, Shield } from '@/components/icons';
 import Link from 'next/link';
 
 export default function AdminPage() {

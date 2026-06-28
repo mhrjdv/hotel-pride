@@ -19,7 +19,7 @@ import {
   AlertCircle,
   CheckCircle,
   Info
-} from 'lucide-react';
+} from '@/components/icons';
 import { calculateBookingAmount, formatBookingCalculation } from '@/lib/utils/gst';
 import { toast } from 'sonner';
 import { BookingData } from '@/lib/types/booking';
@@ -196,8 +196,8 @@ export function PaymentProcessing({ data, onDataChange }: PaymentProcessingProps
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">Stay Details</h4>
                 <div className="space-y-1 text-sm">
-                  <p><span className="text-gray-600">Check-in:</span> {data.checkInDate ? new Date(data.checkInDate).toLocaleDateString() : 'N/A'}</p>
-                  <p><span className="text-gray-600">Check-out:</span> {data.checkOutDate ? new Date(data.checkOutDate).toLocaleDateString() : 'N/A'}</p>
+                  <p><span className="text-gray-600">Check-in:</span> {data.checkInDate ? new Date(data.checkInDate).toLocaleDateString('en-IN') : 'N/A'}</p>
+                  <p><span className="text-gray-600">Check-out:</span> {data.checkOutDate ? new Date(data.checkOutDate).toLocaleDateString('en-IN') : 'N/A'}</p>
                   <p><span className="text-gray-600">Nights:</span> {data.totalNights}</p>
                   {data.extraBeds && data.extraBeds.quantity > 0 && (
                     <p><span className="text-gray-600">Extra beds:</span> {data.extraBeds.quantity} × ₹{data.extraBeds.ratePerBed.toLocaleString('en-IN')}/night</p>

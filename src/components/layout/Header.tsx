@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { User, LogOut, Settings, Shield, Bell } from 'lucide-react';
+import { User, LogOut, Settings, Shield, Bell } from '@/components/icons';
 import { toast } from 'sonner';
 
 export function Header() {

@@ -22,7 +22,7 @@ import {
   Edit3,
   Users,
   Info,
-} from 'lucide-react';
+} from '@/components/icons';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
 import { calculateBookingAmount } from '@/lib/utils/gst';
 import { toast } from 'sonner';
@@ -132,7 +132,7 @@ export function BookingEditor({ booking, isOpen, onOpenChange, onUpdate }: Booki
 
           // Include current room even if not available
           const rooms = roomsResult.data || [];
-          if (booking.rooms && !rooms.find(r => r.id === booking.rooms!.id)) {
+          if (booking.rooms && !rooms.find((r: Database['public']['Tables']['rooms']['Row']) => r.id === booking.rooms!.id)) {
             rooms.push(booking.rooms);
           }
 

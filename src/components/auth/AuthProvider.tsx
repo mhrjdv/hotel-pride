@@ -25,26 +25,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser(session.user);
-        await fetchProfile(session.user.id);
-      }
-      setLoading(false);
-    };
+    // onAuthStateChange fires an INITIAL_SESSION event on subscribe, so a
+    // separate getSession() call is unnecessary. Track the last user id we
+    // fetched a profile for so repeated events (INITIAL_SESSION, SIGNED_IN,
+    // TOKEN_REFRESHED) don't trigger duplicate profile round-trips.
+    let lastUserId: string | null = null;
 
-    getInitialSession();
-
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
-          setUser(session.user);
-          await fetchProfile(session.user.id);
+      async (_event: string, session: { user?: User } | null) => {
+        const sessionUser = session?.user ?? null;
+        setUser(sessionUser);
+        if (sessionUser) {
+          if (sessionUser.id !== lastUserId) {
+            lastUserId = sessionUser.id;
+            await fetchProfile(sessionUser.id);
+          }
         } else {
-          setUser(null);
+          lastUserId = null;
           setProfile(null);
         }
         setLoading(false);

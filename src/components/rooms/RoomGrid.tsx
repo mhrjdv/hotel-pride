@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useMemo, useState } from 'react';
+import { Plus, BedDouble } from '@/components/icons';
 import { Database } from '@/lib/supabase/types';
-import { toast } from 'sonner';
-import { Loader2, RefreshCw, ServerCrash } from 'lucide-react';
-import { RoomCard } from './RoomCard';
 import { Button } from '@/components/ui/button';
+import { RoomCard } from './RoomCard';
+import { RoomFormSheet } from './RoomFormSheet';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 
@@ -14,87 +13,89 @@ interface RoomGridProps {
   initialRooms: Room[];
 }
 
+const FILTERS = ['all', 'available', 'occupied', 'cleaning', 'maintenance'] as const;
+type Filter = (typeof FILTERS)[number];
+
+const FILTER_LABELS: Record<Filter, string> = {
+  all: 'All',
+  available: 'Available',
+  occupied: 'Occupied',
+  cleaning: 'Cleaning',
+  maintenance: 'Maintenance',
+};
+
 export function RoomGrid({ initialRooms }: RoomGridProps) {
-  const [supabase] = useState(() => createClient());
-  const [rooms, setRooms] = useState<Room[]>(initialRooms);
-  const [loading, setLoading] = useState(initialRooms.length === 0);
-  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
-  const fetchRooms = useCallback(async (isRefetch = false) => {
-    if (isRefetch) {
-      setLoading(true);
-    }
-    setError(null);
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .order('room_number', { ascending: true });
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: initialRooms.length };
+    for (const r of initialRooms) c[r.status] = (c[r.status] ?? 0) + 1;
+    return c;
+  }, [initialRooms]);
 
-    if (error) {
-      console.error('Error fetching rooms:', error);
-      setError('Failed to fetch rooms. Please check your connection and try again.');
-      toast.error('Could not load room data.');
-    } else {
-      setRooms(data);
-    }
-    if (isRefetch) {
-      setLoading(false);
-    }
-  }, [supabase]);
+  const visibleRooms = useMemo(
+    () => (filter === 'all' ? initialRooms : initialRooms.filter((r) => r.status === filter)),
+    [initialRooms, filter],
+  );
 
-  useEffect(() => {
-    // If we have initial data, we don't need to fetch it again immediately.
-    // The realtime subscription will handle updates.
-    if (initialRooms.length === 0) {
-      fetchRooms(true);
-    }
-
-    const channel = supabase
-      .channel('realtime-rooms')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' },
-        (payload) => {
-          console.log('Change received!', payload);
-          toast.info('Room status has been updated.');
-          fetchRooms(); // Refetch all rooms on any change
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, fetchRooms, initialRooms.length]);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
-        <p className="mt-4 text-lg text-gray-600">Loading Room Status...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 bg-red-50 text-red-700 border border-red-200 rounded-lg">
-        <ServerCrash className="w-12 h-12" />
-        <p className="mt-4 text-lg font-semibold">An Error Occurred</p>
-        <p className="mt-1">{error}</p>
-        <Button onClick={() => fetchRooms(true)} className="mt-4">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Try Again
-        </Button>
-      </div>
-    );
-  }
+  const openAdd = () => {
+    setEditingRoom(null);
+    setSheetOpen(true);
+  };
+  const openEdit = (room: Room) => {
+    setEditingRoom(room);
+    setSheetOpen(true);
+  };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-      {rooms.map((room) => (
-        <RoomCard key={room.id} room={room} />
-      ))}
+    <div className="space-y-4">
+      {/* Filter bar + primary action */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter rooms by status">
+          {FILTERS.map((f) => (
+            <Button
+              key={f}
+              size="sm"
+              variant={filter === f ? 'default' : 'outline'}
+              aria-pressed={filter === f}
+              onClick={() => setFilter(f)}
+            >
+              {FILTER_LABELS[f]}
+              <span className="ml-1.5 text-xs opacity-70">{counts[f] ?? 0}</span>
+            </Button>
+          ))}
+        </div>
+        <Button className="ml-auto" onClick={openAdd}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Room
+        </Button>
+      </div>
+
+      {visibleRooms.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+          <BedDouble className="mb-3 h-10 w-10 text-muted-foreground" />
+          <p className="font-medium">No {filter === 'all' ? '' : FILTER_LABELS[filter].toLowerCase()} rooms</p>
+          <p className="text-sm text-muted-foreground">
+            {filter === 'all' ? 'Add your first room to get started.' : 'Try a different filter.'}
+          </p>
+          {filter === 'all' && (
+            <Button className="mt-4" onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Room
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {visibleRooms.map((room) => (
+            <RoomCard key={room.id} room={room} onEdit={openEdit} />
+          ))}
+        </div>
+      )}
+
+      <RoomFormSheet open={sheetOpen} onOpenChange={setSheetOpen} room={editingRoom} />
     </div>
   );
-} 
+}

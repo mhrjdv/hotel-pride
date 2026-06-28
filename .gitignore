@@ -28,4 +28,13 @@ Thumbs.db
 .idea/
 
 # Supabase
-.supabase/ 
+.supabase/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Test coverage
+/coverage/

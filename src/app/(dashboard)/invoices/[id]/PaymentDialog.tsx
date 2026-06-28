@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { CreditCard, DollarSign } from 'lucide-react';
+import { CreditCard, DollarSign } from '@/components/icons';
 import { toast } from 'sonner';
 import { Invoice, InvoicePaymentFormData, PAYMENT_METHODS } from '@/lib/types/invoice';
 import { formatCurrency } from '@/lib/utils/invoice-calculations';

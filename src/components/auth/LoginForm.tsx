@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Hotel, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Hotel, Eye, EyeOff, Loader2 } from '@/components/icons';
 import { toast } from 'sonner';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -16,7 +16,6 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,9 +36,11 @@ export function LoginForm() {
       } else {
         toast.success('Welcome back!');
 
-        // Determine post-login redirect path
+        // Determine post-login redirect path. Use a full navigation (not
+        // router.push) so the server middleware reliably sees the freshly-set
+        // Supabase session cookie on the next request.
         const redirectTo = searchParams.get('redirectTo') || '/';
-        router.push(redirectTo);
+        window.location.assign(redirectTo);
       }
     } catch {
       toast.error('An unexpected error occurred');

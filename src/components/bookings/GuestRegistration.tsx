@@ -23,7 +23,7 @@ import {
   CheckCircle2,
   UserCheck,
   UserPlus
-} from 'lucide-react';
+} from '@/components/icons';
 import { toast } from 'sonner';
 import { Customer, BookingData } from '@/lib/types/booking';
 

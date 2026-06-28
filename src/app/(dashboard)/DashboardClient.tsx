@@ -1,23 +1,10 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Users,
-  Calendar,
-  Bed,
-  ClipboardList,
-  Plus,
-  Clock,
-  CreditCard,
-  Hotel,
-  DollarSign,
-} from 'lucide-react';
-import { RoomGrid } from '@/components/rooms/RoomGrid';
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Hotel, BedDouble, CalendarCheck, CalendarX2, IndianRupee, Wallet, Plus, ArrowRight } from '@/components/icons';
 import { Database } from '@/lib/supabase/types';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
@@ -30,11 +17,6 @@ type DashboardStats = {
   todayCheckOuts: number;
   todayRevenue: number;
   pendingPayments: number;
-  totalBookings: number;
-  checkInsToday: number;
-  checkOutsToday: number;
-  revenue: number;
-  occupancyRate: number;
 };
 
 type DashboardClientProps = {
@@ -42,248 +24,83 @@ type DashboardClientProps = {
   initialRooms: Room[];
 };
 
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+
 export function DashboardClient({ stats, initialRooms }: DashboardClientProps) {
-  const [internalStats] = useState<DashboardStats>(stats);
-
-  const roomStatuses = [
-    { type: 'available', count: stats.availableRooms, color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
-    { type: 'occupied', count: stats.occupiedRooms, color: 'bg-red-50 border-red-200 text-red-800' },
-    { type: 'cleaning', count: 0, color: 'bg-amber-50 border-amber-200 text-amber-800' },
-    { type: 'maintenance', count: 0, color: 'bg-orange-50 border-orange-200 text-orange-800' },
-  ];
-
   const router = useRouter();
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(amount);
-  };
+  // Derive real room-status counts from the actual rooms.
+  const roomCounts = useMemo(() => {
+    const c = { available: 0, occupied: 0, cleaning: 0, maintenance: 0, blocked: 0 } as Record<string, number>;
+    for (const r of initialRooms) c[r.status] = (c[r.status] ?? 0) + 1;
+    return c;
+  }, [initialRooms]);
+
+  const cards = [
+    { label: 'Total Rooms', value: String(stats.totalRooms), icon: Hotel },
+    { label: 'Available', value: String(roomCounts.available), icon: BedDouble },
+    { label: "Today's Revenue", value: formatINR(stats.todayRevenue), icon: IndianRupee },
+    { label: 'Check-ins Today', value: String(stats.todayCheckIns), icon: CalendarCheck },
+    { label: 'Check-outs Today', value: String(stats.todayCheckOuts), icon: CalendarX2 },
+    { label: 'Pending Payments', value: String(stats.pendingPayments), icon: Wallet },
+  ];
+
+  const statusPills = [
+    { label: 'Available', value: roomCounts.available, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { label: 'Occupied', value: roomCounts.occupied, cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+    { label: 'Cleaning', value: roomCounts.cleaning, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    { label: 'Maintenance', value: roomCounts.maintenance, cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+  ];
 
   return (
-    <Tabs defaultValue="overview" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:grid-cols-4 mb-4">
-        <TabsTrigger value="overview">
-          <ClipboardList className="w-4 h-4 mr-2" />
-          Overview
-        </TabsTrigger>
-        <TabsTrigger value="rooms">
-          <Bed className="w-4 h-4 mr-2" />
-          Rooms
-        </TabsTrigger>
-        <TabsTrigger value="bookings">
-          <Calendar className="w-4 h-4 mr-2" />
-          Bookings
-        </TabsTrigger>
-        <TabsTrigger value="customers">
-          <Users className="w-4 h-4 mr-2" />
-          Customers
-        </TabsTrigger>
-      </TabsList>
+    <div className="space-y-6">
+      {/* Quick actions */}
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => router.push('/bookings?new=1')}>
+          <Plus className="mr-2 h-4 w-4" /> New booking
+        </Button>
+        <Button variant="outline" onClick={() => router.push('/rooms')}>
+          View rooms
+        </Button>
+        <Button variant="outline" onClick={() => router.push('/bookings?filter=pending')}>
+          Payments due
+        </Button>
+      </div>
 
-      {/* Overview Tab */}
-      <TabsContent value="overview">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Stat Cards */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Rooms</CardTitle>
-              <Hotel className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{internalStats.totalRooms}</div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+        {cards.map(({ label, value, icon: Icon }) => (
+          <Card key={label}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{label}</span>
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">{value}</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today&apos;s Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(internalStats.revenue)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Check-ins Today</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">+{internalStats.todayCheckIns}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Payments</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{internalStats.pendingPayments}</div>
-            </CardContent>
-          </Card>
-        </div>
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>Room Status Overview</CardTitle>
-            <CardDescription>Current availability of all rooms.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-4">
-            {roomStatuses.map((status) => (
-              <Badge key={status.type} className={`px-4 py-2 text-sm capitalize ${status.color}`}>
-                {status.type}: {status.count}
-              </Badge>
+        ))}
+      </div>
+
+      {/* Room status overview */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Room status</h2>
+            <Button variant="ghost" size="sm" onClick={() => router.push('/rooms')}>
+              Manage rooms <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {statusPills.map((s) => (
+              <span key={s.label} className={`rounded-full border px-3 py-1 text-sm font-medium ${s.cls}`}>
+                {s.label}: {s.value}
+              </span>
             ))}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* Rooms Tab */}
-      <TabsContent value="rooms">
-        <Card>
-          <CardHeader>
-            <CardTitle>Room Management</CardTitle>
-            <CardDescription>
-              Manage all rooms and their current status
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RoomGrid initialRooms={initialRooms} />
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* Bookings Tab */}
-      <TabsContent value="bookings">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Booking Management</CardTitle>
-                <CardDescription>
-                  View and manage all reservations and bookings
-                </CardDescription>
-              </div>
-              <Button onClick={() => router.push('/bookings')}>
-                <Plus className="w-4 h-4 mr-2" />
-                New Booking
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Quick Stats */}
-              <div className="space-y-4">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h3 className="font-semibold text-blue-800 mb-2">Today&apos;s Check-ins</h3>
-                  <p className="text-2xl font-bold text-blue-600">{internalStats.todayCheckIns || 0}</p>
-                  <p className="text-sm text-blue-600">
-                    Today&apos;s check-ins and check-outs
-                  </p>
-                </div>
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <h3 className="font-semibold text-green-800 mb-2">Today&apos;s Check-outs</h3>
-                  <p className="text-2xl font-bold text-green-600">{internalStats.todayCheckOuts || 0}</p>
-                  <p className="text-sm text-green-600">
-                    Today&apos;s check-ins and check-outs
-                  </p>
-                </div>
-                <div className="p-4 bg-amber-50 rounded-lg">
-                  <h3 className="font-semibold text-amber-800 mb-2">Pending Payments</h3>
-                  <p className="text-2xl font-bold text-amber-600">{internalStats.pendingPayments || 0}</p>
-                  <p className="text-sm text-amber-600">
-                    Today&apos;s room availability status
-                  </p>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900">Quick Actions</h3>
-                <div className="space-y-2">
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    onClick={() => router.push('/bookings')}
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    View All Bookings
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    onClick={() => router.push('/bookings?filter=today')}
-                  >
-                    <Clock className="w-4 h-4 mr-2" />
-                    Today&apos;s Activities
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    onClick={() => router.push('/bookings?filter=pending')}
-                  >
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Pending Payments
-                  </Button>
-                </div>
-              </div>
-
-              {/* Recent Bookings */}
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Recent Bookings</h3>
-                <div className="space-y-3">
-                  <div className="p-3 border rounded-lg">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-medium text-sm">HTL24120001</p>
-                      <Badge variant="secondary" className="text-xs">Confirmed</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Today&apos;s revenue and key metrics at a glance.
-                    </p>
-                    <p className="text-xs text-gray-500">Check-in: Today</p>
-                  </div>
-                  <div className="p-3 border rounded-lg">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-medium text-sm">HTL24120002</p>
-                      <Badge variant="outline" className="text-xs">Checked In</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Today&apos;s room availability status
-                    </p>
-                    <p className="text-xs text-gray-500">Check-out: Tomorrow</p>
-                  </div>
-                  <Button variant="ghost" size="sm" className="w-full">
-                    View All Bookings
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* Customers Tab */}
-      <TabsContent value="customers">
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Management</CardTitle>
-            <CardDescription>
-              Manage customer information and ID verification
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Customer Management</h3>
-              <p className="text-gray-600 mb-4">
-                Customer management interface will be implemented here
-              </p>
-              <p className="text-gray-600">You&apos;re all caught up!</p>
-              <Button>View All Customers</Button>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
-} 
+}

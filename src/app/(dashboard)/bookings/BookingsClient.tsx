@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { BookingWizard } from '@/components/bookings/BookingWizard';
 import { BookingEditor } from '@/components/bookings/BookingEditor';
 import { 
@@ -17,12 +24,13 @@ import {
   Edit,
   CheckCircle,
   RefreshCw,
+  RotateCcw,
   MoreHorizontal
-} from 'lucide-react';
+} from '@/components/icons';
 import { Database } from '@/lib/supabase/types';
 import { getBookingStatusConfig } from '@/lib/utils/hotel';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Booking as BookingType } from '@/lib/types/booking';
 
 type Booking = Database['public']['Tables']['bookings']['Row'] & {
@@ -46,6 +54,7 @@ interface BookingsClientProps {
 export function BookingsClient({ initialBookings }: BookingsClientProps) {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [bookings, setBookings] = useState<Booking[]>(initialBookings);
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>(initialBookings);
   const [loading, setLoading] = useState(initialBookings.length === 0);
@@ -57,6 +66,18 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<FullBooking | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+
+  // Open the wizard directly when arriving from "New booking" elsewhere
+  // (e.g. the dashboard) via /bookings?new=1, and honour ?filter=.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setEditingBookingId(null);
+      setShowWizard(true);
+    }
+    const f = searchParams.get('filter');
+    if (f === 'pending') setPaymentFilter('pending');
+    if (f === 'today') setDateFilter('today');
+  }, [searchParams]);
 
   const fetchBookings = useCallback(async (isRefetch = false) => {
     if (isRefetch) {
@@ -99,7 +120,7 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
-        (payload) => {
+        (payload: unknown) => {
           console.log('Booking change received!', payload);
           toast.info('Booking list has been updated.');
           fetchBookings();
@@ -212,6 +233,38 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
     }
   };
 
+  // Reverse an accidental check-in (back to confirmed) and free the room.
+  const handleUndoCheckIn = async (bookingId: string, roomId?: string | null) => {
+    const { error } = await supabase
+      .from('bookings')
+      .update({ booking_status: 'confirmed', actual_check_in: null })
+      .eq('id', bookingId);
+    if (error) {
+      toast.error('Failed to undo check-in');
+      return;
+    }
+    if (roomId) {
+      await supabase.from('rooms').update({ status: 'available' }).eq('id', roomId);
+    }
+    toast.success('Check-in reversed');
+    fetchBookings();
+  };
+
+  // Reverse an accidental check-out (back to checked-in); the DB trigger
+  // re-marks the room as occupied.
+  const handleUndoCheckOut = async (bookingId: string) => {
+    const { error } = await supabase
+      .from('bookings')
+      .update({ booking_status: 'checked_in', actual_check_out: null })
+      .eq('id', bookingId);
+    if (error) {
+      toast.error('Failed to undo check-out');
+      return;
+    }
+    toast.success('Check-out reversed');
+    fetchBookings();
+  };
+
   const getQuickStats = () => {
     const today = new Date().toISOString().split('T')[0];
     
@@ -313,11 +366,20 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Bookings List */}
       <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-row items-center justify-between gap-2">
+            <CardTitle>All Bookings ({filteredBookings.length})</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => fetchBookings(true)}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+
+          {/* Toolbar: search + filters */}
+          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+            <div className="relative w-full md:max-w-xs md:flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 placeholder="Search bookings..."
@@ -326,9 +388,9 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                 className="pl-10"
               />
             </div>
-            
+
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full md:w-[160px]">
                 <SelectValue placeholder="Booking Status" />
               </SelectTrigger>
               <SelectContent>
@@ -342,7 +404,7 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
             </Select>
 
             <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full md:w-[160px]">
                 <SelectValue placeholder="Payment Status" />
               </SelectTrigger>
               <SelectContent>
@@ -355,7 +417,7 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
             </Select>
 
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full md:w-[160px]">
                 <SelectValue placeholder="Date Filter" />
               </SelectTrigger>
               <SelectContent>
@@ -367,22 +429,57 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Bookings List */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>All Bookings ({filteredBookings.length})</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => fetchBookings(true)}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
+            <div className="space-y-4">
+              {/* Mobile skeleton */}
+              <div className="block lg:hidden space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i} className="border-l-4 border-l-gray-200">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2">
+                          <div className="h-5 w-32 rounded bg-gray-200 animate-pulse" />
+                          <div className="h-4 w-24 rounded bg-gray-200 animate-pulse" />
+                        </div>
+                        <div className="h-6 w-20 rounded-full bg-gray-200 animate-pulse" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {Array.from({ length: 4 }).map((__, j) => (
+                          <div key={j} className="h-8 rounded bg-gray-200 animate-pulse" />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop table skeleton */}
+              <div className="hidden lg:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        {['Booking #', 'Guest', 'Room', 'Dates', 'Amount', 'Status', 'Payment', 'Actions'].map((h) => (
+                          <th key={h} className="text-left p-3 font-medium">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <tr key={i} className="border-b">
+                          {Array.from({ length: 8 }).map((__, j) => (
+                            <td key={j} className="p-3">
+                              <div className="h-5 w-full max-w-[120px] rounded bg-gray-200 animate-pulse" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           ) : filteredBookings.length === 0 ? (
             <div className="text-center py-8 text-gray-600">
@@ -424,15 +521,15 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                           </div>
                           <div>
                             <p className="text-gray-600">Check-in</p>
-                            <p className="font-medium">{new Date(booking.check_in_date).toLocaleDateString()}</p>
+                            <p className="font-medium">{new Date(booking.check_in_date).toLocaleDateString('en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-gray-600">Check-out</p>
-                            <p className="font-medium">{new Date(booking.check_out_date).toLocaleDateString()}</p>
+                            <p className="font-medium">{new Date(booking.check_out_date).toLocaleDateString('en-IN')}</p>
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                           {canCheckIn && (
                             <Button size="sm" onClick={() => handleCheckIn(booking.id)}>
                               Check In
@@ -443,12 +540,50 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                               Check Out
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => handleView(booking.id)}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(booking.id)}>
-                            <Edit className="w-4 h-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="ml-auto" aria-label="More actions">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleView(booking.id)}>
+                                <Eye className="w-4 h-4 mr-2" />
+                                View
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEdit(booking.id)}>
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              {(canCheckIn || canCheckOut || booking.booking_status === 'checked_in' || booking.booking_status === 'checked_out') && (
+                                <DropdownMenuSeparator />
+                              )}
+                              {canCheckIn && (
+                                <DropdownMenuItem onClick={() => handleCheckIn(booking.id)}>
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Check in
+                                </DropdownMenuItem>
+                              )}
+                              {canCheckOut && (
+                                <DropdownMenuItem onClick={() => handleCheckOut(booking.id)}>
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Check out
+                                </DropdownMenuItem>
+                              )}
+                              {booking.booking_status === 'checked_in' && (
+                                <DropdownMenuItem onClick={() => handleUndoCheckIn(booking.id, booking.room_id)}>
+                                  <RotateCcw className="w-4 h-4 mr-2" />
+                                  Undo check-in
+                                </DropdownMenuItem>
+                              )}
+                              {booking.booking_status === 'checked_out' && (
+                                <DropdownMenuItem onClick={() => handleUndoCheckOut(booking.id)}>
+                                  <RotateCcw className="w-4 h-4 mr-2" />
+                                  Undo check-out
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </CardContent>
                     </Card>
@@ -485,7 +620,7 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                               <div>
                                 <p className="font-medium">{booking.booking_number}</p>
                                 <p className="text-sm text-gray-500">
-                                  {new Date(booking.created_at).toLocaleDateString()}
+                                  {new Date(booking.created_at).toLocaleDateString('en-IN')}
                                 </p>
                               </div>
                             </td>
@@ -505,8 +640,8 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                             </td>
                             <td className="p-3">
                               <div className="text-sm">
-                                <p>{new Date(booking.check_in_date).toLocaleDateString()}</p>
-                                <p className="text-gray-500">to {new Date(booking.check_out_date).toLocaleDateString()}</p>
+                                <p>{new Date(booking.check_in_date).toLocaleDateString('en-IN')}</p>
+                                <p className="text-gray-500">to {new Date(booking.check_out_date).toLocaleDateString('en-IN')}</p>
                                 <p className="text-gray-500">{booking.total_nights} nights</p>
                               </div>
                             </td>
@@ -535,9 +670,9 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                               </Badge>
                             </td>
                             <td className="p-3">
-                              <div className="flex gap-1">
+                              <div className="flex items-center gap-1">
                                 {canCheckIn && (
-                                  <Button size="sm" onClick={() => handleCheckIn(booking.id)}>
+                                  <Button size="sm" aria-label="Check in" onClick={() => handleCheckIn(booking.id)}>
                                     <CheckCircle className="w-4 h-4" />
                                   </Button>
                                 )}
@@ -546,15 +681,50 @@ export function BookingsClient({ initialBookings }: BookingsClientProps) {
                                     Check Out
                                   </Button>
                                 )}
-                                <Button size="sm" variant="ghost" onClick={() => handleView(booking.id)}>
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => handleEdit(booking.id)}>
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button size="sm" variant="ghost">
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="ghost" aria-label="More actions">
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleView(booking.id)}>
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      View
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleEdit(booking.id)}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    {(canCheckIn || canCheckOut || booking.booking_status === 'checked_in' || booking.booking_status === 'checked_out') && (
+                                      <DropdownMenuSeparator />
+                                    )}
+                                    {canCheckIn && (
+                                      <DropdownMenuItem onClick={() => handleCheckIn(booking.id)}>
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Check in
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canCheckOut && (
+                                      <DropdownMenuItem onClick={() => handleCheckOut(booking.id)}>
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Check out
+                                      </DropdownMenuItem>
+                                    )}
+                                    {booking.booking_status === 'checked_in' && (
+                                      <DropdownMenuItem onClick={() => handleUndoCheckIn(booking.id, booking.room_id)}>
+                                        <RotateCcw className="w-4 h-4 mr-2" />
+                                        Undo check-in
+                                      </DropdownMenuItem>
+                                    )}
+                                    {booking.booking_status === 'checked_out' && (
+                                      <DropdownMenuItem onClick={() => handleUndoCheckOut(booking.id)}>
+                                        <RotateCcw className="w-4 h-4 mr-2" />
+                                        Undo check-out
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </td>
                           </tr>

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 
+type CustomerInvoiceSummary = {
+  total_amount?: number | null;
+  paid_amount?: number | null;
+  balance_amount?: number | null;
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -39,9 +45,9 @@ export async function GET(
     // Calculate statistics
     const stats = {
       total_invoices: invoices.length,
-      total_amount: invoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0),
-      paid_amount: invoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0),
-      pending_amount: invoices.reduce((sum, inv) => sum + (inv.balance_amount || 0), 0),
+      total_amount: invoices.reduce((sum: number, inv: CustomerInvoiceSummary) => sum + (inv.total_amount || 0), 0),
+      paid_amount: invoices.reduce((sum: number, inv: CustomerInvoiceSummary) => sum + (inv.paid_amount || 0), 0),
+      pending_amount: invoices.reduce((sum: number, inv: CustomerInvoiceSummary) => sum + (inv.balance_amount || 0), 0),
     };
 
     return NextResponse.json({
