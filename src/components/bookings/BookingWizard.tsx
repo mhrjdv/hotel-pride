@@ -317,14 +317,17 @@ export function BookingWizard({ onComplete, onCancel, initialData, isOpen = true
       
       if (updateState) {
         setValidationErrors({ [currentStepId]: errors });
+        if (errors.length > 0) {
+          logInfo('Step validation failed', { step: currentStepId, errors });
+        } else {
+          logInfo('Step validation passed', { step: currentStepId });
+        }
       }
       
       if (errors.length > 0) {
-        logInfo('Step validation failed', { step: currentStepId, errors });
         return false;
       }
       
-      logInfo('Step validation passed', { step: currentStepId });
       return true;
     } catch (err) {
       logError('Error during step validation', err, { step: currentStepId, bookingData });

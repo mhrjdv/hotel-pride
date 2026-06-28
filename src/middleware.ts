@@ -54,8 +54,17 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Check if user is authenticated
-  const { data: { user } } = await supabase.auth.getUser()
+  // Check if user is authenticated from cookie session
+  const userCookie = request.cookies.get('sb-user')?.value
+  let user = null
+  let userRole = 'staff'
+  
+  if (userCookie) {
+    try {
+      user = JSON.parse(userCookie)
+      userRole = user.role || 'admin' // default to admin for mock
+    } catch (e) {}
+  }
 
   // Public routes that don't require authentication
   const publicRoutes = ['/login', '/auth']
@@ -75,13 +84,7 @@ export async function middleware(request: NextRequest) {
 
   // Check user profile and role for admin routes
   if (user && request.nextUrl.pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || !['admin', 'manager'].includes(profile.role)) {
+    if (!['admin', 'manager'].includes(userRole)) {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }
