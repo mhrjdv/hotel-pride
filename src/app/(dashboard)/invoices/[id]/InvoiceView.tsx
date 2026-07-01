@@ -429,14 +429,14 @@ export default function InvoiceView({ invoiceId }: InvoiceViewProps) {
                 <Separator />
                 <div className="flex justify-between text-base font-bold">
                   <span>Grand Total</span>
-                  <span>{formatCurrency(invoiceData.total_amount, currency)}</span>
+                  <span>{formatCurrency(totalTaxable + totalTax, currency)}</span>
                 </div>
               </div>
 
               {/* Amount in words spans full width */}
               <div className="md:col-span-2 rounded border bg-white dark:bg-gray-900 p-3 text-sm">
                 <span className="font-medium">Amount in Words: </span>
-                {numberToWords(invoiceData.total_amount)}
+                {numberToWords(totalTaxable + totalTax)}
               </div>
 
               {/* Bank details (from hotel config) */}

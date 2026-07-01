@@ -178,6 +178,14 @@ export async function POST(request: NextRequest) {
         terms_and_conditions: body.terms_and_conditions,
         booking_id: body.booking_id,
         created_by: user.id,
+        invoice_type: body.invoice_type,
+        customer_type: body.customer_type,
+        company_name: body.company_name,
+        company_gst_number: body.company_gst_number,
+        company_pan_number: body.company_pan_number,
+        company_contact_person: body.company_contact_person,
+        show_bank_details: body.show_bank_details,
+        is_email_enabled: body.is_email_enabled,
       })
       .select()
       .single();

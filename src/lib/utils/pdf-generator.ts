@@ -101,7 +101,7 @@ export function generateInvoiceHTML(invoice: Invoice, options: InvoicePDFOptions
   );
 
   const placeOfSupply = invoiceData.customer_state || invoiceData.hotel_state || '—';
-  const totalInWords = numberToWords(invoice.total_amount);
+  const totalInWords = numberToWords(totalTaxable + totalTax);
 
   const invoiceTitle = (() => {
     switch (invoiceData.invoice_type) {
@@ -374,7 +374,7 @@ export function generateInvoiceHTML(invoice: Invoice, options: InvoicePDFOptions
                     </tr>` : ''}
                     <tr class="grand">
                         <td class="t-label">Grand Total</td>
-                        <td class="t-val num">${fc(invoice.total_amount)}</td>
+                        <td class="t-val num">${fc(totalTaxable + totalTax)}</td>
                     </tr>
                     ${invoice.paid_amount > 0 ? `
                     <tr>

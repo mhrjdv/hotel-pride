@@ -80,9 +80,25 @@ type Invoice = {
   payment_status: string;
   status: string;
   created_at: string;
+  company_gst_number?: string | null;
+  customer_gst_number?: string | null;
 };
 
 type Period = 'today' | 'week' | 'month' | 'quarter' | 'year';
+
+type GstRecord = {
+  date: string;
+  type: 'booking' | 'invoice';
+  refNumber: string;
+  customerName: string;
+  customerGstin: string;
+  baseAmount: number;
+  gstRate: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  totalGst: number;
+  totalAmount: number;
+};
 
 // ─── Period helper (called once, result memoised in component) ────────────────
 
@@ -291,7 +307,7 @@ function StatCardSkeleton() {
 
 function ReportsSkeleton() {
   return (
-    <div className="space-y-6" aria-busy="true" aria-label="Loading analytics">
+    <div className="space-y-6" role="status" aria-busy="true" aria-label="Loading analytics">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}
       </div>
@@ -410,6 +426,112 @@ export default function ReportsPage() {
   const [crBookingStatus, setCrBookingStatus] = useState<string>('all');
   const [crPaymentStatus, setCrPaymentStatus] = useState<string>('all');
   const [crGst, setCrGst] = useState<GstFilter>('all');
+
+  // GST reconciliation state
+  const [reconData, setReconData] = useState<{
+    refNumber: string;
+    customerName: string;
+    importedAmount: number;
+    importedGst: number;
+    localAmount: number | null;
+    localGst: number | null;
+    status: 'matched' | 'mismatch' | 'not_found';
+  }[]>([]);
+  const [reconFilter, setReconFilter] = useState<'all' | 'matched' | 'mismatch' | 'not_found'>('all');
+
+  const handleImportCsv = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        if (!text) return;
+
+        const lines = text.split(/\r?\n/);
+        if (lines.length <= 1) return;
+
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+        
+        const refIdx = headers.findIndex(h => h.includes('ref') || h.includes('number') || h.includes('inv') || h.includes('book') || h.includes('id') || h.includes('code'));
+        const amountIdx = headers.findIndex(h => h.includes('amount') || h.includes('total') || h.includes('value') || h.includes('gross'));
+        const gstIdx = headers.findIndex(h => h.includes('gst') || h.includes('tax') || h.includes('cgst') || h.includes('sgst'));
+        const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('customer') || h.includes('guest'));
+
+        if (refIdx === -1) {
+          alert('Could not find reference number or invoice number column in CSV.');
+          return;
+        }
+
+        const localMap = new Map<string, { totalAmount: number; totalGst: number }>();
+        for (const b of bookings) {
+          localMap.set(b.booking_number.toUpperCase().trim(), {
+            totalAmount: b.total_amount || 0,
+            totalGst: b.gst_amount || 0,
+          });
+        }
+        for (const inv of invoices) {
+          localMap.set(inv.invoice_number.toUpperCase().trim(), {
+            totalAmount: inv.total_amount || 0,
+            totalGst: inv.total_tax || 0,
+          });
+        }
+
+        const parsed: typeof reconData = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          const cells: string[] = [];
+          let currentCell = '';
+          let inQuotes = false;
+          for (let charIdx = 0; charIdx < line.length; charIdx++) {
+            const char = line[charIdx];
+            if (char === '"' || char === "'") {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              cells.push(currentCell.trim().replace(/^["']|["']$/g, ''));
+              currentCell = '';
+            } else {
+              currentCell += char;
+            }
+          }
+          cells.push(currentCell.trim().replace(/^["']|["']$/g, ''));
+
+          if (cells.length === 0 || !cells[refIdx]) continue;
+
+          const refVal = cells[refIdx].trim();
+          const nameVal = nameIdx !== -1 ? cells[nameIdx] : 'Unknown';
+          const amtVal = amountIdx !== -1 ? parseFloat(cells[amountIdx].replace(/[^\d.-]/g, '')) : 0;
+          const gstVal = gstIdx !== -1 ? parseFloat(cells[gstIdx].replace(/[^\d.-]/g, '')) : 0;
+
+          const match = localMap.get(refVal.toUpperCase());
+          let status: 'matched' | 'mismatch' | 'not_found' = 'not_found';
+          
+          if (match) {
+            const isAmtDiff = Math.abs(match.totalAmount - amtVal) > 1.0;
+            const isGstDiff = Math.abs(match.totalGst - gstVal) > 1.0;
+            status = (isAmtDiff || isGstDiff) ? 'mismatch' : 'matched';
+          }
+
+          parsed.push({
+            refNumber: refVal,
+            customerName: nameVal,
+            importedAmount: isNaN(amtVal) ? 0 : amtVal,
+            importedGst: isNaN(gstVal) ? 0 : gstVal,
+            localAmount: match ? match.totalAmount : null,
+            localGst: match ? match.totalGst : null,
+            status,
+          });
+        }
+        setReconData(parsed);
+      };
+      reader.readAsText(file);
+    },
+    [bookings, invoices]
+  );
 
   // Fetch all data in parallel
   const fetchData = useCallback(async () => {
@@ -598,6 +720,72 @@ export default function ReportsPage() {
 
     const trendMax = Math.max(...trendDays, 1);
 
+    // GST record calculation
+    const gstRecords: GstRecord[] = [];
+    let gstBaseTotal = 0;
+    let gstTaxTotal = 0;
+    let gstCgstTotal = 0;
+    let gstSgstTotal = 0;
+    let gstGrossTotal = 0;
+
+    for (const b of bookings) {
+      if (b.created_at >= startStr && b.created_at <= endStr && bookingHasGst(b)) {
+        const base = b.base_amount || 0;
+        const tax = b.gst_amount || 0;
+        const total = b.total_amount || 0;
+        const rate = base > 0 ? Math.round((tax / base) * 100) : 12;
+        gstRecords.push({
+          date: b.check_in_date || b.created_at.split('T')[0],
+          type: 'booking',
+          refNumber: b.booking_number,
+          customerName: b.customers?.name || 'Unknown',
+          customerGstin: '',
+          baseAmount: base,
+          gstRate: rate,
+          cgstAmount: tax / 2,
+          sgstAmount: tax / 2,
+          totalGst: tax,
+          totalAmount: total,
+        });
+        gstBaseTotal += base;
+        gstTaxTotal += tax;
+        gstCgstTotal += tax / 2;
+        gstSgstTotal += tax / 2;
+        gstGrossTotal += total;
+      }
+    }
+
+    for (const inv of invoices) {
+      if (inv.created_at >= startStr && inv.created_at <= endStr && (inv.total_tax || 0) > 0) {
+        const tax = inv.total_tax || 0;
+        const total = inv.total_amount || 0;
+        const base = total - tax;
+        const rate = base > 0 ? Math.round((tax / base) * 100) : 12;
+        gstRecords.push({
+          date: inv.invoice_date || inv.created_at.split('T')[0],
+          type: 'invoice',
+          refNumber: inv.invoice_number,
+          customerName: inv.customer_name || 'Unknown',
+          customerGstin: inv.customer_gst_number || inv.company_gst_number || '',
+          baseAmount: base,
+          gstRate: rate,
+          cgstAmount: tax / 2,
+          sgstAmount: tax / 2,
+          totalGst: tax,
+          totalAmount: total,
+        });
+        gstBaseTotal += base;
+        gstTaxTotal += tax;
+        gstCgstTotal += tax / 2;
+        gstSgstTotal += tax / 2;
+        gstGrossTotal += total;
+      }
+    }
+
+    const sortedGstRecords = [...gstRecords].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
     // Derived customer stats
     const uniqueGuests = customerIds.size;
     const repeatGuests = topCustomers.filter((c) => c.bookings > 1).length;
@@ -617,6 +805,7 @@ export default function ReportsPage() {
       invRevenue, invPaid, invPending, invCount,
       uniqueGuests, repeatGuests, avgRevenuePerGuest,
       periodBookings,
+      gstBaseTotal, gstTaxTotal, gstCgstTotal, gstSgstTotal, gstGrossTotal, gstRecords: sortedGstRecords,
     };
   }, [bookings, rooms, invoices, period, startStr, endStr]);
 
@@ -855,6 +1044,31 @@ export default function ReportsPage() {
     [analytics, bookings, invoices, periodLabel, period]
   );
 
+  const handleGstExport = useCallback(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const rows: (string | number)[][] = [
+      ['Hotel Pride — GST Sales Register'],
+      ['Period', periodLabel],
+      ['Generated', today],
+      [],
+      ['Date', 'Type', 'Reference #', 'Guest Name', 'Customer GSTIN', 'Taxable Value', 'GST Rate', 'CGST (6%)', 'SGST (6%)', 'Total GST', 'Total Amount'],
+      ...analytics.gstRecords.map((r) => [
+        r.date,
+        r.type === 'booking' ? 'Booking' : 'Invoice',
+        r.refNumber,
+        r.customerName,
+        r.customerGstin,
+        r.baseAmount,
+        `${r.gstRate}%`,
+        r.cgstAmount,
+        r.sgstAmount,
+        r.totalGst,
+        r.totalAmount,
+      ]),
+    ];
+    exportRowsToCsv(`hotel-pride-gst-register-${period}-${today}.csv`, rows);
+  }, [analytics, period, periodLabel]);
+
   const handleCustomExport = useCallback(() => {
     const acLabel = crAc === 'all' ? 'All' : crAc === 'ac' ? 'AC only' : 'Non-AC only';
     const gstLabel = crGst === 'all' ? 'All' : crGst === 'gst' ? 'GST applied' : 'No GST';
@@ -1026,7 +1240,7 @@ export default function ReportsPage() {
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid grid-cols-5 w-full sm:w-auto sm:inline-flex">
+          <TabsList className="grid grid-cols-6 w-full sm:w-auto sm:inline-flex">
             <TabsTrigger value="overview" className="gap-1.5">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Overview</span>
@@ -1042,6 +1256,10 @@ export default function ReportsPage() {
             <TabsTrigger value="guests" className="gap-1.5">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Guests</span>
+            </TabsTrigger>
+            <TabsTrigger value="gst" className="gap-1.5">
+              <Receipt className="w-4 h-4" />
+              <span className="hidden sm:inline">GST</span>
             </TabsTrigger>
             <TabsTrigger value="custom" className="gap-1.5">
               <Settings className="w-4 h-4" />
@@ -1595,6 +1813,204 @@ export default function ReportsPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── GST REPORT ────────────────────────────────────────────────────── */}
+          <TabsContent value="gst" className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard title="Taxable Value (Base)" value={formatINR(analytics.gstBaseTotal)} subtitle={periodLabel} icon={IndianRupee} color="#6366f1" />
+              <StatCard title="CGST Collected (6%)" value={formatINR(analytics.gstCgstTotal)} subtitle={periodLabel} icon={Receipt} color="#8b5cf6" />
+              <StatCard title="SGST Collected (6%)" value={formatINR(analytics.gstSgstTotal)} subtitle={periodLabel} icon={Receipt} color="#8b5cf6" />
+              <StatCard title="Total GST Collected" value={formatINR(analytics.gstTaxTotal)} subtitle={periodLabel} icon={Percent} color="#10b981" />
+            </div>
+
+            {/* GST Action Bar */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-lg border border-gray-100 shadow-xs">
+              <div>
+                <h3 className="font-semibold text-gray-900 text-sm">GST Sales Register</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Consolidated bookings and company invoices register for filing returns.</p>
+              </div>
+              <Button onClick={handleGstExport} className="gap-1.5 shrink-0">
+                <Download className="w-4 h-4" aria-hidden="true" />
+                Export GST CSV
+              </Button>
+            </div>
+
+            {/* GST Sales Register Table */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Transactions Ledger</CardTitle>
+                <CardDescription>
+                  {analytics.gstRecords.length} records in this period
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analytics.gstRecords.length === 0 ? (
+                  <div className="flex flex-col items-center py-10 text-gray-400 gap-2">
+                    <Receipt className="w-10 h-10 opacity-30" />
+                    <p className="text-sm">No GST transactions found in this period</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-gray-400 text-xs uppercase tracking-wide">
+                          <th className="text-left pb-2">Date</th>
+                          <th className="text-left pb-2">Type</th>
+                          <th className="text-left pb-2">Ref Number</th>
+                          <th className="text-left pb-2">Guest / Client</th>
+                          <th className="text-left pb-2">GSTIN</th>
+                          <th className="text-right pb-2">Taxable Value</th>
+                          <th className="text-right pb-2">CGST (6%)</th>
+                          <th className="text-right pb-2">SGST (6%)</th>
+                          <th className="text-right pb-2 font-semibold">Total GST</th>
+                          <th className="text-right pb-2">Total Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analytics.gstRecords.map((r, idx) => (
+                          <tr key={r.refNumber + idx} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="py-2.5 text-gray-600">{r.date}</td>
+                            <td className="py-2.5">
+                              <Badge className={`text-[10px] uppercase font-bold border-0 ${
+                                r.type === 'booking' ? 'bg-indigo-50 text-indigo-700' : 'bg-cyan-50 text-cyan-700'
+                              }`}>
+                                {r.type}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 font-medium text-gray-900">{r.refNumber}</td>
+                            <td className="py-2.5 text-gray-700 truncate max-w-[120px]">{r.customerName}</td>
+                            <td className="py-2.5 font-mono text-xs text-gray-500">{r.customerGstin || '—'}</td>
+                            <td className="py-2.5 text-right tabular-nums">{formatINR(r.baseAmount)}</td>
+                            <td className="py-2.5 text-right tabular-nums text-gray-500">{formatINR(r.cgstAmount)}</td>
+                            <td className="py-2.5 text-right tabular-nums text-gray-500">{formatINR(r.sgstAmount)}</td>
+                            <td className="py-2.5 text-right tabular-nums font-semibold text-emerald-600">{formatINR(r.totalGst)}</td>
+                            <td className="py-2.5 text-right tabular-nums font-bold text-gray-900">{formatINR(r.totalAmount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* GST Reconciliation / Import Tool */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 text-indigo-600" aria-hidden="true" />
+                  GST Reconciliation &amp; Audit Tool
+                </CardTitle>
+                <CardDescription>
+                  Import an external sales register CSV (e.g. from bookkeeping software) to reconcile with local records.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-col sm:flex-row items-center gap-4 p-6 bg-slate-50 border border-dashed border-slate-300 rounded-lg">
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className="text-sm font-semibold text-gray-900">Upload Reconciling CSV File</p>
+                    <p className="text-xs text-gray-500 mt-1">Columns should include Reference Number, Name, Total Amount, and GST Amount.</p>
+                  </div>
+                  <div className="shrink-0">
+                    <input
+                      type="file"
+                      id="recon-file"
+                      accept=".csv"
+                      onChange={handleImportCsv}
+                      className="hidden"
+                    />
+                    <Button asChild variant="outline">
+                      <label htmlFor="recon-file" className="cursor-pointer">
+                        Select CSV File
+                      </label>
+                    </Button>
+                  </div>
+                </div>
+
+                {reconData.length > 0 && (
+                  <div className="space-y-4">
+                    {/* Status filter tabs */}
+                    <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                      <div className="flex gap-1.5">
+                        {([
+                          { key: 'all', label: 'All Imported' },
+                          { key: 'matched', label: 'Matched' },
+                          { key: 'mismatch', label: 'Mismatches' },
+                          { key: 'not_found', label: 'Not in DB' },
+                        ] as const).map(({ key, label }) => {
+                          const count = key === 'all' ? reconData.length : reconData.filter(d => d.status === key).length;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setReconFilter(key)}
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                                reconFilter === key
+                                  ? 'bg-indigo-600 text-white shadow-xs'
+                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                              }`}
+                            >
+                              {label} ({count})
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => setReconData([])} className="text-red-600 font-semibold hover:text-red-700 hover:bg-red-50">
+                        Clear Audit Data
+                      </Button>
+                    </div>
+
+                    {/* Reconciliation Table */}
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-50 border-b text-gray-500 text-xs font-semibold">
+                            <th className="text-left p-3">Ref Number</th>
+                            <th className="text-left p-3">Client (Imported)</th>
+                            <th className="text-right p-3">Amount (Imported)</th>
+                            <th className="text-right p-3">Amount (Local)</th>
+                            <th className="text-right p-3">GST (Imported)</th>
+                            <th className="text-right p-3">GST (Local)</th>
+                            <th className="text-left p-3 pl-4">Audit Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reconData
+                            .filter(d => reconFilter === 'all' || d.status === reconFilter)
+                            .map((row, idx) => (
+                              <tr key={row.refNumber + idx} className="border-b last:border-0 hover:bg-gray-50">
+                                <td className="p-3 font-semibold text-gray-900">{row.refNumber}</td>
+                                <td className="p-3 text-gray-600 max-w-[120px] truncate">{row.customerName}</td>
+                                <td className="p-3 text-right tabular-nums">{formatINR(row.importedAmount)}</td>
+                                <td className={`p-3 text-right tabular-nums ${row.status === 'mismatch' && row.localAmount !== row.importedAmount ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                  {row.localAmount !== null ? formatINR(row.localAmount) : '—'}
+                                </td>
+                                <td className="p-3 text-right tabular-nums">{formatINR(row.importedGst)}</td>
+                                <td className={`p-3 text-right tabular-nums ${row.status === 'mismatch' && row.localGst !== row.importedGst ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                  {row.localGst !== null ? formatINR(row.localGst) : '—'}
+                                </td>
+                                <td className="p-3 pl-4">
+                                  <Badge className={`text-xs border-0 ${
+                                    row.status === 'matched' ? 'bg-emerald-100 text-emerald-700'
+                                    : row.status === 'mismatch' ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-rose-100 text-rose-700'
+                                  }`}>
+                                    {row.status === 'matched' ? 'Matched'
+                                      : row.status === 'mismatch' ? 'Mismatch'
+                                      : 'Not in DB'}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </CardContent>
