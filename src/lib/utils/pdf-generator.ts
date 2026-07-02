@@ -1,5 +1,6 @@
 import { Invoice, InvoicePDFOptions } from '@/lib/types/invoice';
 import { formatCurrency, numberToWords, calculateGSTBreakdown } from './invoice-calculations';
+import fs from 'fs';
 
 /**
  * HTML-escape a value so user-entered text (descriptions, names, notes) can't
@@ -449,22 +450,65 @@ export function generateInvoiceHTML(invoice: Invoice, options: InvoicePDFOptions
   `;
 }
 
+function getFallbackChromePath(): string | undefined {
+  const platform = process.platform;
+  if (platform === 'darwin') {
+    const macPath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    if (fs.existsSync(macPath)) return macPath;
+  } else if (platform === 'win32') {
+    const winPaths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ];
+    for (const p of winPaths) {
+      if (fs.existsSync(p)) return p;
+    }
+  } else if (platform === 'linux') {
+    const linuxPaths = [
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+    ];
+    for (const p of linuxPaths) {
+      if (fs.existsSync(p)) return p;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Generate PDF buffer for invoice using Puppeteer
  */
 export async function generateInvoicePDF(invoice: Invoice, options?: InvoicePDFOptions): Promise<Buffer> {
   try {
     // Dynamic import to avoid issues in edge runtime
-    const puppeteer = await import('puppeteer');
+    const puppeteerModule = await import('puppeteer');
+    const puppeteer = puppeteerModule.default || puppeteerModule;
 
     // Generate HTML
     const html = generateInvoiceHTML(invoice, options);
 
     // Launch browser
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    let browser;
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+    } catch (launchError) {
+      console.warn('Default Puppeteer launch failed, trying system Chrome fallback...', launchError);
+      const fallbackPath = getFallbackChromePath();
+      if (fallbackPath) {
+        console.log(`Launching Puppeteer with system Chrome: ${fallbackPath}`);
+        browser = await puppeteer.launch({
+          headless: true,
+          executablePath: fallbackPath,
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+      } else {
+        throw launchError;
+      }
+    }
 
     const page = await browser.newPage();
 
@@ -495,3 +539,4 @@ export async function generateInvoicePDF(invoice: Invoice, options?: InvoicePDFO
     return Buffer.from(html, 'utf-8');
   }
 }
+

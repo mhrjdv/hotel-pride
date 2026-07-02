@@ -99,7 +99,7 @@ export default function InvoiceView({ invoiceId }: InvoiceViewProps) {
   };
 
   const handleDownloadPDF = () => {
-    window.open(`/api/invoices/${invoiceId}/pdf`, '_blank');
+    window.open(`/api/invoices/${invoiceId}/pdf?t=${Date.now()}`, '_blank');
   };
 
   const getStatusBadge = (status: string, type: 'invoice' | 'payment') => {

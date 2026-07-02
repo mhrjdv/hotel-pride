@@ -1,0 +1,8 @@
+HTTP/1.1 307 Temporary Redirect
+location: /login?redirectTo=%2Fapi%2Finvoices%2Fde608478-43eb-44c4-9c49-9e0208de3361%2Fpdf
+Date: Thu, 02 Jul 2026 15:54:59 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+/login?redirectTo=%2Fapi%2Finvoices%2Fde608478-43eb-44c4-9c49-9e0208de3361%2Fpdf

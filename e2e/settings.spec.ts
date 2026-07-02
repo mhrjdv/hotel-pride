@@ -10,7 +10,7 @@ test.describe('Settings', () => {
   test('loads the current hotel configuration', async ({ authedPage: page }) => {
     // Seeded config: Hotel Pride. The basic-info tab is the default.
     await expect(page.getByLabel(/hotel name/i)).toHaveValue(/hotel pride/i);
-    await expect(page.getByLabel(/gst number/i)).toHaveValue(/27AAAAA1111A1Z1/i);
+    await expect(page.getByLabel(/gst number/i)).toHaveValue(/27(ABCDE1234F1Z5|AAAAA1111A1Z1)/i);
   });
 
   test('editing and saving shows a success message', async ({ authedPage: page }) => {

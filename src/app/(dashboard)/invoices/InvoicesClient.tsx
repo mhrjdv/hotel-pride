@@ -411,7 +411,7 @@ export default function InvoicesClient() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
+                        onClick={() => window.open(`/api/invoices/${invoice.id}/pdf?t=${Date.now()}`, '_blank')}
                       >
                         <Download className="h-4 w-4" />
                       </Button>

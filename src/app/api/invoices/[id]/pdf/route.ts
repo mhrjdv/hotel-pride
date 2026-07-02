@@ -53,6 +53,20 @@ export async function GET(
     // Generate PDF
     const pdfBuffer = await generateInvoicePDF(invoice, options);
 
+    const bufferText = pdfBuffer.toString('utf-8').trim().toLowerCase();
+    const isHtml = bufferText.startsWith('<!doctype html') || bufferText.startsWith('<html');
+    if (isHtml) {
+      let html = pdfBuffer.toString('utf-8');
+      // Auto-trigger browser print dialog on load
+      html = html.replace('</body>', '<script>window.onload = () => { window.print(); }</script></body>');
+      
+      return new NextResponse(html, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+        },
+      });
+    }
+
     // Return PDF response
     return new NextResponse(pdfBuffer, {
       headers: {

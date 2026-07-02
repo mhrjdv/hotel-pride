@@ -120,6 +120,11 @@ export default function CustomerInvoices({ customerId, customerName }: CustomerI
     try {
       const response = await fetch(`/api/invoices/${invoiceId}/pdf`);
       if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+          window.open(`/api/invoices/${invoiceId}/pdf`, '_blank');
+          return;
+        }
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');

@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { Invoice, InvoiceEmailData } from '@/lib/types/invoice';
-import { generateInvoiceHTML } from './pdf-generator';
+import { generateInvoiceHTML, generateInvoicePDF } from './pdf-generator';
 
 // Email configuration
 const emailConfig = {
@@ -31,7 +31,22 @@ function createTransporter() {
     throw new Error('SMTP credentials not configured. Add a real SMTP_USER and SMTP_PASS to .env.local.');
   }
 
-  return nodemailer.createTransport(emailConfig);
+  const isGmail = 
+    process.env.SMTP_SERVICE === 'gmail' || 
+    emailConfig.host === 'smtp.gmail.com' || 
+    emailConfig.auth.user?.endsWith('@gmail.com');
+
+  const transportOptions = isGmail 
+    ? {
+        service: 'gmail',
+        auth: {
+          user: emailConfig.auth.user,
+          pass: emailConfig.auth.pass,
+        },
+      }
+    : emailConfig;
+
+  return nodemailer.createTransport(transportOptions);
 }
 
 /** True when real (non-placeholder) SMTP credentials are present. */
@@ -55,7 +70,26 @@ async function getTransport(): Promise<{
   isEthereal: boolean;
 }> {
   if (hasRealSmtp()) {
-    return { transporter: nodemailer.createTransport(emailConfig), from: emailConfig.auth.user!, isEthereal: false };
+    const isGmail = 
+      process.env.SMTP_SERVICE === 'gmail' || 
+      emailConfig.host === 'smtp.gmail.com' || 
+      emailConfig.auth.user?.endsWith('@gmail.com');
+
+    const transportOptions = isGmail 
+      ? {
+          service: 'gmail',
+          auth: {
+            user: emailConfig.auth.user,
+            pass: emailConfig.auth.pass,
+          },
+        }
+      : emailConfig;
+
+    return { 
+      transporter: nodemailer.createTransport(transportOptions), 
+      from: emailConfig.auth.user!, 
+      isEthereal: false 
+    };
   }
   if (!etherealTransport) {
     const acc = await nodemailer.createTestAccount();
@@ -220,24 +254,52 @@ export async function sendInvoiceEmail(
 
     // Add PDF attachment if requested
     if (attachPDF && emailData.attach_pdf) {
-      const invoiceHTML = generateInvoiceHTML(invoice, {
-        format: 'A4',
-        orientation: 'portrait',
-        include_payments: true,
-        include_terms: true,
-      });
+      try {
+        const pdfBuffer = await generateInvoicePDF(invoice, {
+          format: 'A4',
+          orientation: 'portrait',
+          include_payments: true,
+          include_terms: true,
+        });
 
-      // For now, we'll attach the HTML version
-      // In production, you would convert this to PDF using puppeteer or similar
-      if (!mailOptions.attachments) {
-        mailOptions.attachments = [];
+        const bufferText = pdfBuffer.toString('utf-8').trim().toLowerCase();
+        const isHtml = bufferText.startsWith('<!doctype html') || bufferText.startsWith('<html');
+        if (isHtml) {
+          if (!mailOptions.attachments) {
+            mailOptions.attachments = [];
+          }
+          mailOptions.attachments.push({
+            filename: `invoice-${(invoice as any).invoice_number}.html`,
+            content: pdfBuffer,
+            contentType: 'text/html',
+          });
+        } else {
+          if (!mailOptions.attachments) {
+            mailOptions.attachments = [];
+          }
+          mailOptions.attachments.push({
+            filename: `invoice-${(invoice as any).invoice_number}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          });
+        }
+      } catch (pdfErr) {
+        console.error('Error generating PDF for email attachment:', pdfErr);
+        const invoiceHTML = generateInvoiceHTML(invoice, {
+          format: 'A4',
+          orientation: 'portrait',
+          include_payments: true,
+          include_terms: true,
+        });
+        if (!mailOptions.attachments) {
+          mailOptions.attachments = [];
+        }
+        mailOptions.attachments.push({
+          filename: `invoice-${(invoice as any).invoice_number}.html`,
+          content: Buffer.from(invoiceHTML, 'utf8'),
+          contentType: 'text/html',
+        });
       }
-      mailOptions.attachments.push({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        filename: `invoice-${(invoice as any).invoice_number}.html`,
-        content: Buffer.from(invoiceHTML, 'utf8'),
-        contentType: 'text/html',
-      });
     }
 
     // Send email

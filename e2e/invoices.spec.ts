@@ -26,13 +26,13 @@ test.describe('Invoices', () => {
     await page.getByRole('button', { name: /new invoice/i }).click();
     await expect(page).toHaveURL(/\/invoices\/new/);
     await expect(page.getByRole('heading', { name: /create/i }).first()).toBeVisible();
-    await expect(page.getByText(/^item 1$/i)).toBeVisible();
+    await expect(page.getByText(/^item 1$/i).first()).toBeVisible();
     await expect(page.getByLabel(/customer name/i)).toBeVisible();
   });
 
   test('tax inclusive vs exclusive changes the live total', async ({ authedPage: page }) => {
     await page.goto('/invoices/new');
-    await expect(page.getByText(/^item 1$/i)).toBeVisible();
+    await expect(page.getByText(/^item 1$/i).first()).toBeVisible();
 
     // The line-item number fields (Quantity, Unit Price, GST Rate, Discount) are
     // unlabelled spinbuttons; target them by order within the item card.
@@ -52,7 +52,7 @@ test.describe('Invoices', () => {
 
   test('creating an invoice with a line item lands on the invoice detail page', async ({ authedPage: page }) => {
     await page.goto('/invoices/new');
-    await expect(page.getByText(/^item 1$/i)).toBeVisible();
+    await expect(page.getByText(/^item 1$/i).first()).toBeVisible();
 
     // Tagged customer_name so the global teardown deletes this invoice.
     const customerName = tagName('invoice');
@@ -75,7 +75,7 @@ test.describe('Invoices', () => {
 
     // Create an invoice first so there is something to pay against.
     await page.goto('/invoices/new');
-    await expect(page.getByText(/^item 1$/i)).toBeVisible();
+    await expect(page.getByText(/^item 1$/i).first()).toBeVisible();
     // Tagged customer_name so the global teardown deletes this invoice.
     await page.getByLabel(/customer name/i).fill(tagName('payment-flow'));
     await page.getByPlaceholder(/item description/i).fill('Service charge');
@@ -83,7 +83,7 @@ test.describe('Invoices', () => {
     await page.getByRole('button', { name: /save as draft/i }).click();
     await expect(page).toHaveURL(/\/invoices\/[\w-]+$/, { timeout: 15_000 });
 
-    const addPayment = page.getByRole('button', { name: /add payment/i });
+    const addPayment = page.getByRole('button', { name: /^payment$/i });
     await expect(addPayment).toBeVisible();
     await addPayment.click();
 

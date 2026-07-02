@@ -92,8 +92,14 @@ export async function PUT(
       );
     }
 
-    // Calculate totals
-    const calculations = calculateInvoiceTotal(body.line_items);
+    // Calculate totals - map gst fields for calculation
+    const calculationItems = body.line_items.map(item => ({
+      ...item,
+      gst_rate: item.gst_rate || 12,
+      gst_inclusive: item.gst_inclusive || false,
+      gst_name: item.gst_name || 'GST',
+    }));
+    const calculations = calculateInvoiceTotal(calculationItems);
 
     // Update invoice
     const { data: invoice, error: invoiceError } = await supabase
@@ -173,17 +179,22 @@ export async function PUT(
         return {
           invoice_id: id,
           item_type: item.item_type,
+          custom_item_type_id: item.custom_item_type_id || null,
           description: item.description,
           quantity: item.quantity,
           unit_price: item.unit_price,
           line_total: calculation.line_total,
-          tax_rate: item.gst_rate,
+          tax_rate: item.gst_rate || 12,
           tax_amount: calculation.tax_amount,
           tax_inclusive: item.gst_inclusive || false,
           tax_name: item.gst_name || 'GST',
           discount_rate: item.discount_rate || 0,
           discount_amount: calculation.discount_amount,
-          item_date: item.item_date,
+          is_buffet_item: item.is_buffet_item || false,
+          buffet_type: item.buffet_type || null,
+          persons_count: item.persons_count || 1,
+          price_per_person: item.price_per_person || 0,
+          item_date: item.item_date || null,
           sort_order: item.sort_order || index,
         };
       });

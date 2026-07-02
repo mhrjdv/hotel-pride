@@ -57,6 +57,18 @@ function InvoicePreviewContent() {
       });
 
       if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+          const htmlText = await response.text();
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(htmlText);
+            printWindow.document.close();
+          } else {
+            toast.error('Pop-up blocked. Please allow pop-ups to print the invoice preview.');
+          }
+          return;
+        }
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');

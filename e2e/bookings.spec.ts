@@ -57,8 +57,8 @@ test.describe('Bookings', () => {
   });
 
   test('check-in actions are not present when there are no eligible bookings', async ({ authedPage: page }) => {
-    // The seeded DB has no bookings, so the conditional Check In control should
-    // not render. This verifies the action is gated, not always shown.
+    // Search for a non-existent booking to force the empty state
+    await page.getByPlaceholder(/search bookings/i).fill('ZZZ-no-such-booking-9999');
     await expect(page.getByText(/no bookings found/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /^check in$/i })).toHaveCount(0);
   });

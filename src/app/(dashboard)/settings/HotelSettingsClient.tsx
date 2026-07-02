@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Save, Building, CreditCard, Settings, Loader2 } from '@/components/icons';
+import { Save, Building, CreditCard, Settings, Loader2, Mail } from '@/components/icons';
 
 interface HotelConfig {
   // Basic Hotel Information
@@ -81,6 +81,43 @@ export default function HotelSettingsClient() {
     invoice_footer_text: 'Thank you for choosing our hotel services.',
   });
 
+  const [testEmail, setTestEmail] = useState('');
+  const [testingEmail, setTestingEmail] = useState(false);
+
+  const handleSendTestEmail = async () => {
+    if (!testEmail) {
+      toast.error('Recipient email address is required');
+      return;
+    }
+    try {
+      setTestingEmail(true);
+      const res = await fetch('/api/settings/email/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: testEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.previewUrl) {
+          toast.success('Test email sent (test inbox).', {
+            description: 'No real SMTP set — click to view the email preview.',
+            action: { label: 'View email', onClick: () => window.open(data.previewUrl, '_blank') },
+            duration: 15000,
+          });
+        } else {
+          toast.success('Test email sent successfully!');
+        }
+      } else {
+        toast.error(data.error || 'Failed to send test email');
+      }
+    } catch (err) {
+      console.error('Error sending test email:', err);
+      toast.error('Failed to send test email');
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
   const loadHotelConfig = useCallback(async () => {
     try {
       setLoading(true);
@@ -92,6 +129,9 @@ export default function HotelSettingsClient() {
           ...prev,
           ...data.data,
         }));
+        if (data.data.email) {
+          setTestEmail(data.data.email);
+        }
       }
     } catch (error) {
       console.error('Error loading hotel config:', error);
@@ -163,7 +203,7 @@ export default function HotelSettingsClient() {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="basic" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="basic" className="flex items-center gap-2">
             <Building className="h-4 w-4" />
             Basic Info
@@ -179,6 +219,10 @@ export default function HotelSettingsClient() {
           <TabsTrigger value="invoice" className="flex items-center gap-2">
             <Save className="h-4 w-4" />
             Invoice Settings
+          </TabsTrigger>
+          <TabsTrigger value="email" className="flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            Email Verification
           </TabsTrigger>
         </TabsList>
 
@@ -479,6 +523,54 @@ export default function HotelSettingsClient() {
                   placeholder="Enter footer text for invoices"
                   rows={2}
                 />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="email" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Email Integration Verification</CardTitle>
+              <CardDescription>
+                Verify the system's SMTP or Gmail settings. Ensure SMTP credentials are set in the server environment (e.g. <code>.env.local</code>) before testing.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-gray-50 dark:bg-gray-800/30 p-4 text-sm text-gray-600 dark:text-gray-400 space-y-2">
+                <p className="font-semibold text-gray-900 dark:text-white">Gmail Integration Requirements:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><code>SMTP_HOST</code>: <code>smtp.gmail.com</code> (auto-configured if user ends with @gmail.com)</li>
+                  <li><code>SMTP_PORT</code>: <code>587</code> or <code>465</code></li>
+                  <li><code>SMTP_USER</code>: Your Gmail Address (e.g. <code>username@gmail.com</code>)</li>
+                  <li><code>SMTP_PASS</code>: Your Google Account <strong>App Password</strong> (not your standard login password)</li>
+                </ul>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="test_recipient">Recipient Email Address</Label>
+                <div className="flex gap-2 max-w-md">
+                  <Input
+                    id="test_recipient"
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    placeholder="Enter email to receive test message"
+                  />
+                  <Button
+                    onClick={handleSendTestEmail}
+                    disabled={testingEmail || !testEmail}
+                  >
+                    {testingEmail ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Send Test Email'
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

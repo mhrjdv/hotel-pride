@@ -124,8 +124,8 @@ test.describe('Customers', () => {
   test.fixme('add-customer is reachable on a 390px viewport', async () => {});
 
   test('opening a customer profile shows their details and booking history', async ({ authedPage: page }) => {
-    // Seeded customer c1 = Rajesh Kumar. Profile is reached at /customers/:id.
-    await page.goto('/customers/c1');
+    // Seeded customer Rajesh Kumar. Profile is reached at /customers/:id.
+    await page.goto('/customers/550e8400-e29b-41d4-a716-446655440001');
     await expect(page.getByRole('heading', { name: /rajesh kumar/i })).toBeVisible();
     await expect(page.getByText(/total bookings/i).first()).toBeVisible();
     await expect(page.getByRole('tab', { name: /booking history/i })).toBeVisible();
@@ -134,7 +134,7 @@ test.describe('Customers', () => {
   test('customer invoices API returns a list for a known customer', async ({ authedPage: page }) => {
     // The customer profile has no invoices tab in the UI; the data is served by
     // an API route. Assert it responds successfully for the seeded customer.
-    const res = await page.request.get('/api/customers/c1/invoices');
+    const res = await page.request.get('/api/customers/550e8400-e29b-41d4-a716-446655440001/invoices');
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body).toBeTruthy();
