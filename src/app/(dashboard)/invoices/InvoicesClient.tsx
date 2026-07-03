@@ -333,28 +333,28 @@ export default function InvoicesClient() {
           ) : (
             <div className="space-y-2">
               {/* Sortable column header bar (desktop) */}
-              <div role="row" className="hidden md:flex items-center gap-4 px-3 py-2 border-b text-xs font-medium text-gray-600">
-                <div role="columnheader" aria-sort={ariaSort('invoice_number')} className="w-40">
+              <div className="hidden md:flex items-center gap-4 px-3 py-2 border-b text-xs font-medium text-gray-600">
+                <div aria-sort={ariaSort('invoice_number')} className="w-40">
                   <button type="button" onClick={() => handleSort('invoice_number')} className="flex items-center gap-1 hover:text-gray-900">
                     Invoice # {sortIndicator('invoice_number')}
                   </button>
                 </div>
-                <div role="columnheader" aria-sort={ariaSort('customer')} className="flex-1">
+                <div aria-sort={ariaSort('customer')} className="flex-1">
                   <button type="button" onClick={() => handleSort('customer')} className="flex items-center gap-1 hover:text-gray-900">
                     Customer {sortIndicator('customer')}
                   </button>
                 </div>
-                <div role="columnheader" aria-sort={ariaSort('invoice_date')} className="w-28">
+                <div aria-sort={ariaSort('invoice_date')} className="w-28">
                   <button type="button" onClick={() => handleSort('invoice_date')} className="flex items-center gap-1 hover:text-gray-900">
                     Date {sortIndicator('invoice_date')}
                   </button>
                 </div>
-                <div role="columnheader" aria-sort={ariaSort('amount')} className="w-28">
+                <div aria-sort={ariaSort('amount')} className="w-28">
                   <button type="button" onClick={() => handleSort('amount')} className="flex items-center gap-1 hover:text-gray-900">
                     Amount {sortIndicator('amount')}
                   </button>
                 </div>
-                <div role="columnheader" aria-sort={ariaSort('status')} className="w-28">
+                <div aria-sort={ariaSort('status')} className="w-28">
                   <button type="button" onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900">
                     Status {sortIndicator('status')}
                   </button>
